@@ -100,17 +100,22 @@ const rules = reactive({
 const loadDepartments = async () => {
   loading.value = true
   try {
+    console.log('Loading departments...')
     const query: DepartmentQuery = {
       page: currentPage.value,
       limit: pageSize.value,
       search: searchForm.value.search
     }
     const response = await departmentApi.list(query)
-    departmentList.value = response.items
-    total.value = response.total
+    console.log('Department API response:', response)
+    departmentList.value = response.data.items
+    total.value = response.data.total
+    console.log('Loaded departments:', departmentList.value)
   } catch (error) {
     ElMessage.error('加载部门列表失败')
     console.error('Error loading departments:', error)
+    departmentList.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }

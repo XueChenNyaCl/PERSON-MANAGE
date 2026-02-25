@@ -1,36 +1,54 @@
 import axios from 'axios'
 
-// 创建axios实例
 const api = axios.create({
   baseURL: '/api',
   timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json'
-  }
 })
 
-// 请求拦截器
+// 请求拦截器：添加JWT令牌
 api.interceptors.request.use(
-  config => {
-    // 打印请求URL，检查是否正确
-    console.log('Request URL:', config.url)
-    console.log('Request Full URL:', config.baseURL + config.url)
-    // 可以在这里添加token等认证信息
+  (config) => {
+    const token = localStorage.getItem('token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
     return config
   },
-  error => {
+  (error) => {
     return Promise.reject(error)
   }
 )
 
-// 响应拦截器
+// 响应拦截器：处理401错误
 api.interceptors.response.use(
-  response => {
-    return response.data
-  },
-  error => {
-    console.error('API Error:', error)
-    console.error('Error config:', error.config)
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config
+    
+    // 401错误且不是登录请求
+    if (error.response?.status === 401 && !originalRequest._retry && originalRequest.url !== '/auth/login') {
+      originalRequest._retry = true
+      
+      try {
+        // 尝试刷新令牌
+        const refreshToken = localStorage.getItem('refresh_token')
+        if (refreshToken) {
+          const response = await api.post('/auth/refresh', { refresh_token: refreshToken })
+          const newToken = response.data.token
+          localStorage.setItem('token', newToken)
+          
+          // 重试原始请求
+          originalRequest.headers.Authorization = `Bearer ${newToken}`
+          return api(originalRequest)
+        }
+      } catch (refreshError) {
+        // 刷新失败，跳转到登录页
+        localStorage.clear()
+        window.location.href = '/login'
+        return Promise.reject(refreshError)
+      }
+    }
+    
     return Promise.reject(error)
   }
 )

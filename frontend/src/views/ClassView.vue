@@ -143,6 +143,7 @@ const rules = reactive({
 const loadClasses = async () => {
   loading.value = true
   try {
+    console.log('Loading classes...')
     const query: ClassQuery = {
       page: currentPage.value,
       limit: pageSize.value,
@@ -150,11 +151,15 @@ const loadClasses = async () => {
       grade: searchForm.value.grade ? Number(searchForm.value.grade) : undefined
     }
     const response = await classApi.list(query)
-    classList.value = response.items
-    total.value = response.total
+    console.log('Class API response:', response)
+    classList.value = response.data.items
+    total.value = response.data.total
+    console.log('Loaded classes:', classList.value)
   } catch (error) {
     ElMessage.error('加载班级列表失败')
     console.error('Error loading classes:', error)
+    classList.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
@@ -164,14 +169,18 @@ const loadClasses = async () => {
 const loadTeachers = async () => {
   teachersLoading.value = true
   try {
+    console.log('Loading teachers...')
     const response = await personApi.list({ 
       page: 1, 
       limit: 100, 
       type: 'teacher' 
     })
-    teachers.value = response.items
+    console.log('Teachers API response:', response)
+    teachers.value = response.data.items
+    console.log('Loaded teachers:', teachers.value)
   } catch (error) {
     console.error('Error loading teachers:', error)
+    teachers.value = []
   } finally {
     teachersLoading.value = false
   }

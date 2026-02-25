@@ -385,7 +385,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { 
   House, User, UserFilled, Timer, GoodsFilled, Message, Bell, Setting, 
@@ -393,11 +393,69 @@ import {
   Collection, Top, Reading, Star, Check, Flag, Edit, Calendar, 
   Tickets, Trophy, Lock, Grid, Document, Ticket 
 } from '@element-plus/icons-vue'
+import { useAuthStore } from '../store/auth'
+import { menuItems, menuGroups } from '../config/menu'
+import { hasPermission } from '../utils/permission'
+
+// 图标名称到组件的映射
+const iconComponents = {
+  House,
+  User,
+  UserFilled,
+  Timer,
+  GoodsFilled,
+  Message,
+  Bell,
+  Setting,
+  Suitcase,
+  OfficeBuilding,
+  DataAnalysis,
+  Operation,
+  Money,
+  TrendCharts,
+  Collection,
+  Top,
+  Reading,
+  Star,
+  Check,
+  Flag,
+  Edit,
+  Calendar,
+  Tickets,
+  Trophy,
+  Lock,
+  Grid,
+  Document,
+  Ticket
+}
 
 const router = useRouter()
 const route = useRoute()
-const username = ref('管理员')
+const authStore = useAuthStore()
 const userMenuVisible = ref(false)
+
+const username = computed(() => authStore.userName || '管理员')
+const userRole = computed(() => authStore.userRole || '')
+const isAdmin = computed(() => userRole.value === 'admin')
+
+// 过滤后的菜单项（根据权限）
+const filteredMenuGroups = computed(() => {
+  return menuGroups.filter(group => {
+    // 获取该分组下的所有菜单项
+    const groupItems = menuItems.filter(item => item.parentId === group.id)
+    // 如果分组下有至少一个菜单项用户有权限访问，则显示该分组
+    return groupItems.some(item => authStore.hasPermission(item.requiredPermission))
+  })
+})
+
+const filteredMenuItems = computed(() => {
+  return menuItems.filter(item => authStore.hasPermission(item.requiredPermission))
+})
+
+// 根据图标名称获取组件
+const getIconComponent = (iconName: string) => {
+  return iconComponents[iconName as keyof typeof iconComponents] || House
+}
 
 const navigateTo = (path: string) => {
   router.push(`/dashboard/${path}`)
@@ -412,13 +470,13 @@ const toggleUserMenu = () => {
 }
 
 const handleLogout = () => {
-  localStorage.removeItem('token')
+  authStore.clearAuth()
   router.push('/login')
 }
 
 onMounted(() => {
   // 检查是否有token
-  if (!localStorage.getItem('token')) {
+  if (!authStore.isAuthenticated) {
     router.push('/login')
   }
   

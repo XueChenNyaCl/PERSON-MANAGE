@@ -1,38 +1,32 @@
-use axum::{http::{StatusCode, request::Parts}, extract::State, Extension, RequestPartsExt};use jsonwebtoken::{decode, DecodingKey, Validation};use serde::{Deserialize, Serialize};use tower_http::auth::AsyncRequireAuthorizationLayer;
+use axum::{extract::Request, middleware::Next, response::Response, http::StatusCode};
+use axum_extra::{TypedHeader, headers::{authorization::Bearer, Authorization}};
 
-use crate::core::error::AppError;
+use crate::core::auth::{verify_token, Claims};
+use crate::core::config::load_config;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Claims {
-    pub sub: String,
-    pub role: String,
-    pub exp: u64,
-}
-
-#[derive(Debug, Clone)]
-pub struct AuthState {
-    pub secret: String,
-}
-
-pub async fn auth_middleware<B>(
-    auth: String,
-    State(auth_state): State<AuthState>,
-    mut req: Parts,
-) -> Result<Parts, (StatusCode, String)> {
-    let token = auth.replace("Bearer ", "");
+pub async fn auth_middleware(
+    TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
+    request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let token = auth.token();
     
-    match decode::<Claims>(
-        &token,
-        &DecodingKey::from_secret(auth_state.secret.as_ref()),
-        &Validation::default(),
-    ) {
-        Ok(decoded) => {
-            req.extensions.insert(decoded.claims);
-            Ok(req)
-        }
-        Err(e) => Err((StatusCode::UNAUTHORIZED, e.to_string())),
-    }
+    // 加载配置获取JWT密钥
+    let config = load_config().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    // 验证令牌
+    let claims = verify_token(token, &config.jwt_secret)
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    
+    // 将用户信息添加到请求扩展中
+    let mut request = request;
+    request.extensions_mut().insert(claims);
+    
+    Ok(next.run(request).await)
 }
+
+// 旧的require_auth函数，保留兼容性
+use tower_http::auth::AsyncRequireAuthorizationLayer;
 
 pub fn require_auth() -> AsyncRequireAuthorizationLayer<impl Fn(&str) -> Result<String, std::convert::Infallible> + Clone> {
     AsyncRequireAuthorizationLayer::new(|auth: &str| {

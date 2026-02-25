@@ -1,7 +1,8 @@
-use axum::{extract::State, Json, routing::delete, routing::get, routing::post, routing::put, Router};
+use axum::{extract::State, Json, middleware, routing::delete, routing::get, routing::post, routing::put, Router};
 use sqlx::PgPool;
 
 use crate::api::{attendance, auth, class, department, debug, notice, person, score};
+use crate::core::middleware::auth_middleware;
 use crate::core::plugin::PluginManager;
 
 // 应用状态
@@ -17,7 +18,10 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
         plugin_manager,
     };
 
-    Router::new()
+
+
+    // 公开路由（无需认证）
+    let public_routes = Router::new()
         // 健康检查
         .route("/health", get(health_check))
         // 数据库连接状态检查
@@ -39,8 +43,11 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
         .route("/api/score", get(score::list))
         .route("/api/notice", get(notice::list))
         .route("/api/permission/teacher/classes", get(person::get_teacher_classes))
-        // 需要认证的路由
-        // TODO: 添加认证中间件
+        // WebSocket路由
+        .route("/ws", get(crate::ws::handler::ws_handler));
+
+    // 需要认证的路由
+    let protected_routes = Router::new()
         .route("/api/persons", post(person::create))
         .route("/api/persons/:id", put(person::update))
         .route("/api/persons/:id", delete(person::delete))
@@ -53,8 +60,11 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
         .route("/api/attendance", post(attendance::create))
         .route("/api/score", post(score::create))
         .route("/api/notice", post(notice::create))
-        // WebSocket路由
-        .route("/ws", get(crate::ws::handler::ws_handler))
+        .layer(middleware::from_fn(auth_middleware));
+
+    // 合并路由
+    public_routes
+        .merge(protected_routes)
         // 注入状态
         .with_state(state)
 }

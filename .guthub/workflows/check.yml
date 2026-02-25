@@ -1,0 +1,131 @@
+name: "代码质量检查"
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+jobs:
+  # 第一步：检测变更文件
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'backend/Cargo.toml'
+              - 'backend/Cargo.lock'
+            frontend:
+              - 'frontend/**'
+              - 'frontend/package*.json'
+              - 'frontend/package-lock.json'
+              - 'frontend/vite.config.ts'
+              - 'frontend/tsconfig*.json'
+              - 'frontend/index.html'
+              - 'frontend/public/**'
+              - 'frontend/assets/**'
+              - 'frontend/src/**/*.vue'
+              - 'frontend/src/**/*.ts'
+              - 'frontend/src/**/*.css'
+
+  backend:
+    name: 后端检查 (Rust)
+    needs: changes
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 后端变更检测
+        run: echo "backend changed=${{ needs.changes.outputs.backend }}"
+
+      - name: 检出代码
+        if: ${{ needs.changes.outputs.backend == 'true' }}
+        uses: actions/checkout@v4
+
+      - name: 安装系统依赖
+        if: ${{ needs.changes.outputs.backend == 'true' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: 安装 Rust 工具链
+        if: ${{ needs.changes.outputs.backend == 'true' }}
+        id: rust_setup
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+        continue-on-error: true
+
+      - name: 重试安装 Rust 工具链
+        if: ${{ steps.rust_setup.outcome == 'failure' && needs.changes.outputs.backend == 'true' }}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: 缓存 Rust 编译产物
+        if: ${{ needs.changes.outputs.backend == 'true' }}
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./backend -> target"
+
+      - name: 检查代码格式 (Rust)
+        if: ${{ needs.changes.outputs.backend == 'true' }}
+        run: cargo fmt --all -- --check
+        working-directory: ./backend
+
+      - name: 运行 Clippy 检查
+        if: ${{ needs.changes.outputs.backend == 'true' }}
+        run: cargo clippy --workspace -- -D warnings
+        working-directory: ./backend
+
+  frontend:
+    name: 前端检查 (Node)
+    needs: changes
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 前端变更检测
+        run: echo "frontend changed=${{ needs.changes.outputs.frontend }}"
+
+      - name: 检出代码
+        if: ${{ needs.changes.outputs.frontend == 'true' }}
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        if: ${{ needs.changes.outputs.frontend == 'true' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+
+      - name: 缓存 npm 依赖
+        if: ${{ needs.changes.outputs.frontend == 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: 安装前端依赖
+        if: ${{ needs.changes.outputs.frontend == 'true' }}
+        run: |
+          npm install --frozen-lockfile
+        working-directory: ./frontend
+
+      - name: 运行格式化并检查前端 Lint
+        if: ${{ needs.changes.outputs.frontend == 'true' }}
+        run: |
+          npm run fmt:check && npm run lint
+        working-directory: ./frontend
+
+      - name: 检查前端构建
+        if: ${{ needs.changes.outputs.frontend == 'true' }}
+        run: npm run build
+        working-directory: ./frontend

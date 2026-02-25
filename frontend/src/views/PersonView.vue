@@ -296,10 +296,11 @@ const loadPersons = async () => {
     console.log('Fetching persons with query:', query)
     const response = await personApi.list(query)
     console.log('Received response:', response)
-    console.log('Response items:', response.items)
-    console.log('Response total:', response.total)
-    personList.value = response.items
-    total.value = response.total
+    console.log('Response data:', response.data)
+    console.log('Response items:', response.data.items)
+    console.log('Response total:', response.data.total)
+    personList.value = response.data.items
+    total.value = response.data.total
     console.log('Updated personList:', personList.value)
     console.log('Updated total:', total.value)
   } catch (error) {
@@ -315,7 +316,7 @@ const loadClasses = async () => {
   classesLoading.value = true
   try {
     const response = await classApi.list({ page: 1, limit: 100 })
-    classes.value = response.items
+    classes.value = response.data.items
   } catch (error) {
     console.error('Error loading classes:', error)
   } finally {

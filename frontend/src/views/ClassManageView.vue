@@ -106,16 +106,29 @@ const classStudents = ref<PersonResponse[]>([])
 const loadClasses = async () => {
   classesLoading.value = true
   try {
+    console.log('Starting to load classes...')
     const response = await classApi.list({ page: 1, limit: 100 })
-    classes.value = response.items
-    // 如果有班级，默认选择第一个
-    if (classes.value.length > 0 && !selectedClassId.value) {
-      selectedClassId.value = classes.value[0].id
-      await handleClassChange()
+    console.log('Class API response:', response)
+    console.log('Response data:', response.data)
+    
+    // 正确处理响应结构
+    if (response && response.data) {
+      classes.value = response.data.items || []
+      console.log('Loaded classes:', classes.value)
+      
+      // 如果有班级，默认选择第一个
+      if (classes.value.length > 0 && !selectedClassId.value) {
+        selectedClassId.value = classes.value[0].id
+        await handleClassChange()
+      }
+    } else {
+      console.error('Invalid response structure:', response)
+      classes.value = []
     }
   } catch (error) {
     ElMessage.error('加载班级列表失败')
     console.error('Error loading classes:', error)
+    classes.value = []
   } finally {
     classesLoading.value = false
   }
@@ -124,8 +137,10 @@ const loadClasses = async () => {
 // 加载班级信息
 const loadClassInfo = async (classId: string) => {
   try {
+    console.log('Loading class info for:', classId)
     const response = await classApi.get(classId)
-    selectedClass.value = response
+    console.log('Class info response:', response)
+    selectedClass.value = response.data
   } catch (error) {
     ElMessage.error('加载班级信息失败')
     console.error('Error loading class info:', error)
@@ -136,16 +151,19 @@ const loadClassInfo = async (classId: string) => {
 const loadClassTeachers = async (classId: string) => {
   teachersLoading.value = true
   try {
+    console.log('Loading class teachers for:', classId)
     const response = await personApi.list({
       page: 1,
       limit: 100,
       type: 'teacher',
       class_id: classId
     })
-    classTeachers.value = response.items
+    console.log('Class teachers response:', response)
+    classTeachers.value = response.data.items
   } catch (error) {
     ElMessage.error('加载班级老师失败')
     console.error('Error loading class teachers:', error)
+    classTeachers.value = []
   } finally {
     teachersLoading.value = false
   }
@@ -155,16 +173,19 @@ const loadClassTeachers = async (classId: string) => {
 const loadClassStudents = async (classId: string) => {
   studentsLoading.value = true
   try {
+    console.log('Loading class students for:', classId)
     const response = await personApi.list({
       page: 1,
       limit: 100,
       type: 'student',
       class_id: classId
     })
-    classStudents.value = response.items
+    console.log('Class students response:', response)
+    classStudents.value = response.data.items
   } catch (error) {
     ElMessage.error('加载班级学生失败')
     console.error('Error loading class students:', error)
+    classStudents.value = []
   } finally {
     studentsLoading.value = false
   }
