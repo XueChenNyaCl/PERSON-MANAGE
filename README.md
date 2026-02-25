@@ -18,21 +18,16 @@
 
 ### 安装依赖
 
-1. 安装前端依赖
+1. 安装所有依赖（包括前端、后端和根目录依赖）
 ```bash
-cd frontend
 npm install
 ```
 
-2. 安装后端依赖（自动处理）
-```bash
-cd backend
-cargo build
-```
+2. 启动postgresql数据库
+   会在端口5432上开放数据库连接
 
-3. 安装根目录依赖
 ```bash
-npm install
+net start postgresql-x64-15
 ```
 
 ### 配置数据库
@@ -41,8 +36,14 @@ npm install
 2. 创建数据库
 ```sql
 CREATE DATABASE example_db;
-CREATE USER admin WITH PASSWORD 'password';
+CREATE USER admin WITH PASSWORD 'admin';
 GRANT ALL PRIVILEGES ON DATABASE example_db TO admin;
+```
+
+3. 运行数据库迁移
+```bash
+cd backend
+cargo run --bin run_migration
 ```
 
 ### 启动项目
@@ -53,13 +54,25 @@ npm run dev
 
 这会同时启动前端开发服务器和后端API服务器。
 
-- 前端地址：http://localhost:5173
+- 前端地址：http://localhost:3001
 - 后端地址：http://localhost:3000
 
 ### 构建项目
 
 ```bash
 npm run build
+```
+
+### 代码检查
+
+```bash
+#前端检查
+npm run lint
+
+#后端检查
+cargo fmt --all -- --check
+#运行Clippy检查
+cargo clippy --workspace -- -D warnings
 ```
 
 ## 项目结构
@@ -144,7 +157,7 @@ school-management-system/
 1. 开发环境使用的数据库配置为：
    - 数据库名：example_db
    - 用户名：admin
-   - 密码：password
+   - 密码：admin
 
 2. 生产环境请修改 `.env` 文件中的配置，尤其是 JWT_SECRET。
 
