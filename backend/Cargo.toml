@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 # Web框架
 axum = { version = "^0.7.0", features = ["ws"] }
+axum-extra = { version = "^0.9.0", features = ["typed-header"] }
 tokio = { version = "^1.32.0", features = ["full"] }
 hyper = { version = "^1.0.0", features = ["full"] }
 
@@ -14,6 +15,7 @@ sqlx = { version = "^0.7.0", features = ["postgres", "runtime-tokio", "macros", 
 
 # 认证
 jsonwebtoken = "^9.2.0"
+bcrypt = "^0.15.0"
 tower-http = { version = "^0.5.0", features = ["auth", "cors"] }
 
 # WebSocket
@@ -54,3 +56,7 @@ path = "run_migration.rs"
 [[bin]]
 name = "simple_migration"
 path = "simple_migration.rs"
+
+[[bin]]
+name = "run_login_migration"
+path = "run_login_migration.rs"

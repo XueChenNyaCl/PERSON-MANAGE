@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '../views/LoginView.vue'
 import HomeView from '../views/HomeView.vue'
 import DashboardView from '../views/DashboardView.vue'
+import { useAuthStore } from '../store/auth'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -89,6 +90,29 @@ const router = createRouter({
       redirect: '/dashboard/notice'
     }
   ]
+})
+
+// 路由守卫
+router.beforeEach((to, from, next) => {
+  const authStore = useAuthStore()
+  
+  // 检查是否需要认证
+  const publicRoutes = ['/login', '/']
+  const isPublicRoute = publicRoutes.includes(to.path)
+  
+  if (!isPublicRoute && !authStore.isAuthenticated) {
+    // 重定向到登录页
+    next('/login')
+    return
+  }
+  
+  // 如果已登录且访问登录页，重定向到dashboard
+  if (to.path === '/login' && authStore.isAuthenticated) {
+    next('/dashboard')
+    return
+  }
+  
+  next()
 })
 
 export default router
