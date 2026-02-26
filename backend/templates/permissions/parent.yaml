@@ -1,0 +1,39 @@
+# 家长权限模板
+# 优先级: 10 (默认)
+# 描述: 家长查看子女相关信息权限
+
+permissions:
+  # 基础查看权限
+  - permission: person.view
+    priority: 10
+  - permission: class.view
+    priority: 10
+  - permission: attendance.view
+    priority: 10
+  - permission: score.view
+    priority: 10
+  - permission: notice.view
+    priority: 10
+  - permission: dashboard.view
+    priority: 10
+  
+  # 通配符查看权限
+  - permission: *.view
+    priority: 5
+  
+  # 否定权限（限制管理操作和敏感信息）
+  - permission: -person.manage
+    priority: 15
+  - permission: -class.manage
+    priority: 15
+  - permission: -attendance.manage
+    priority: 15
+  - permission: -score.manage
+    priority: 15
+  - permission: -notice.manage
+    priority: 15
+  - permission: -person.sensitive.view
+    priority: 15
+  
+  # 特定限制（家长只能查看自己子女的信息）
+  # 注意：这部分需要在业务逻辑中实现，权限系统只提供基础控制

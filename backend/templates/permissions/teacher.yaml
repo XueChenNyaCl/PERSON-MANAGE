@@ -1,0 +1,58 @@
+# 教师权限模板
+# 优先级: 10 (默认)
+# 描述: 教师权限，可以管理班级、考勤、成绩等
+
+permissions:
+  # 人员查看权限
+  - permission: person.view
+    priority: 10
+  - permission: person.sensitive.view
+    priority: 10
+  
+  # 班级管理权限
+  - permission: class.view
+    priority: 10
+  - permission: class.manage
+    priority: 10
+  - permission: class.update_teacher
+    priority: 10
+  
+  # 部门查看权限
+  - permission: department.view
+    priority: 10
+  
+  # 考勤管理权限
+  - permission: attendance.manage
+    priority: 10
+  
+  # 成绩管理权限
+  - permission: score.manage
+    priority: 10
+  
+  # 通知查看权限
+  - permission: notice.view
+    priority: 10
+  
+  # 仪表板权限
+  - permission: dashboard.view
+    priority: 10
+  
+  # 通配符权限
+  - permission: class.*
+    priority: 5
+  - permission: attendance.*
+    priority: 5
+  - permission: score.*
+    priority: 5
+  
+  # 否定权限 - 限制删除操作
+  - permission: -person.delete
+    priority: 15
+  - permission: -person.manage.delete
+    priority: 15
+  - permission: -class.delete
+    priority: 15
+  - permission: -department.delete
+    priority: 15
+  - permission: -department.manage.delete
+    priority: 15

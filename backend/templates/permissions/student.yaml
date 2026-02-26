@@ -1,0 +1,36 @@
+# 学生权限模板
+# 优先级: 7 (默认)
+# 描述: 学生基础查看权限
+
+permissions:
+  # 基础查看权限
+  - permission: person.view
+    priority: 7
+  - permission: class.view
+    priority: 7
+  - permission: attendance.view
+    priority: 7
+  - permission: score.view
+    priority: 7
+  - permission: notice.view
+    priority: 7
+  - permission: dashboard.view
+    priority: 7
+  
+  # 通配符查看权限
+  - permission: *.view
+    priority: 5
+  
+  # 否定权限（限制管理操作）
+  - permission: -person.manage
+    priority: 10
+  - permission: -class.manage
+    priority: 10
+  - permission: -attendance.manage
+    priority: 10
+  - permission: -score.manage
+    priority: 10
+  - permission: -notice.manage
+    priority: 10
+  - permission: -person.sensitive.view
+    priority: 10

@@ -1,0 +1,70 @@
+# 管理员权限模板
+# 优先级: 10 (默认)
+# 描述: 系统管理员拥有所有权限
+
+permissions:
+  # 系统管理权限
+  - permission: system.settings
+    priority: 10
+  - permission: system.permissions
+    priority: 10
+  
+  # 人员管理权限
+  - permission: person.view
+    priority: 10
+  - permission: person.manage
+    priority: 10
+  - permission: person.sensitive.view
+    priority: 10
+  
+  # 班级管理权限
+  - permission: class.view
+    priority: 10
+  - permission: class.manage
+    priority: 10
+  - permission: class.update_teacher
+    priority: 10
+  
+  # 部门管理权限
+  - permission: department.view
+    priority: 10
+  - permission: department.manage
+    priority: 10
+  - permission: department.update
+    priority: 10
+  
+  # 考勤管理权限
+  - permission: attendance.view
+    priority: 10
+  - permission: attendance.manage
+    priority: 10
+  
+  # 成绩管理权限
+  - permission: score.view
+    priority: 10
+  - permission: score.manage
+    priority: 10
+  
+  # 通知管理权限
+  - permission: notice.view
+    priority: 10
+  - permission: notice.manage
+    priority: 10
+  
+  # 仪表板权限
+  - permission: dashboard.view
+    priority: 10
+  
+  # 通配符权限（谨慎使用）
+  - permission: person.*
+    priority: 5
+  - permission: class.*
+    priority: 5
+  - permission: department.*
+    priority: 5
+  - permission: attendance.*
+    priority: 5
+  - permission: score.*
+    priority: 5
+  - permission: notice.*
+    priority: 5

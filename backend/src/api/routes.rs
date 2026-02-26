@@ -1,7 +1,7 @@
 use axum::{extract::State, Json, middleware, routing::delete, routing::get, routing::post, routing::put, Router};
 use sqlx::PgPool;
 
-use crate::api::{attendance, auth, class, department, debug, notice, person, score};
+use crate::api::{attendance, auth, class, department, debug, notice, permission, person, score};
 use crate::core::middleware::auth_middleware;
 use crate::core::plugin::PluginManager;
 
@@ -30,6 +30,7 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
         .route("/api/debug/persons", get(debug::debug_persons))
         // 认证路由
         .route("/api/auth/login", post(auth::login))
+        .route("/api/auth/register", post(auth::register))
         // 公开路由
         .route("/api/persons", get(person::list))
         .route("/api/persons/:id", get(person::get))
@@ -60,6 +61,18 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
         .route("/api/attendance", post(attendance::create))
         .route("/api/score", post(score::create))
         .route("/api/notice", post(notice::create))
+        // 权限管理路由
+        .route("/api/permissions", get(permission::list_role_permissions))
+        .route("/api/permissions", post(permission::add_role_permission))
+        .route("/api/permissions", delete(permission::remove_role_permission))
+        .route("/api/permissions/check", post(permission::check_permission))
+        .route("/api/permissions/users/:user_id", get(permission::list_user_permissions))
+        .route("/api/permissions/users/:user_id", post(permission::add_user_permission))
+        .route("/api/permissions/users/:user_id", delete(permission::remove_user_permission))
+        // 新增权限管理路由
+        .route("/api/permissions/translations", post(permission::get_permission_translations))
+        .route("/api/permissions/keys", get(permission::get_all_permission_keys))
+        .route("/api/permissions/apply-yaml", post(permission::apply_yaml_template))
         .layer(middleware::from_fn(auth_middleware));
 
     // 合并路由

@@ -4,6 +4,7 @@ pub mod class;
 pub mod debug;
 pub mod department;
 pub mod notice;
+pub mod permission;
 pub mod person;
 pub mod routes;
 pub mod score;

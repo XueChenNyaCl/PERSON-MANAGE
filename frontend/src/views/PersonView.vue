@@ -45,7 +45,12 @@
             {{ getPersonBelong(scope.row) }}
           </template>
         </el-table-column>
-        <el-table-column prop="phone" label="电话" width="120"></el-table-column>
+        <el-table-column label="电话" width="120">
+          <template #default="scope">
+            <span v-if="canViewSensitiveInfo">{{ scope.row.phone || '未设置' }}</span>
+            <span v-else class="sensitive-info-hidden">***</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="150">
           <template #default="scope">
             <el-button type="primary" size="small" @click="handleEdit(scope.row)">编辑</el-button>
@@ -188,6 +193,15 @@ import { Delete, Plus } from '@element-plus/icons-vue'
 import { personApi, type PersonResponse, type PersonCreate, type PersonUpdate, type PersonQuery, type TeacherClassResponse } from '../api/person'
 import { classApi } from '../api/class'
 import { departmentApi } from '../api/department'
+import { useAuthStore } from '../store/auth'
+
+// 权限管理
+const authStore = useAuthStore()
+
+// 检查是否有查看敏感信息的权限
+const canViewSensitiveInfo = computed(() => {
+  return authStore.hasPermission('person.sensitive.view')
+})
 
 // 人员管理相关
 const loading = ref(false)
@@ -246,8 +260,17 @@ const rules = reactive({
   ],
   employee_no: [
     {
-      required: computed(() => form.type_ === 'teacher'),
-      message: '请输入工号',
+      validator: (rule, value, callback) => {
+        if (form.type_ === 'teacher') {
+          if (!value || value.trim() === '') {
+            callback(new Error('请输入工号'))
+          } else {
+            callback()
+          }
+        } else {
+          callback()
+        }
+      },
       trigger: 'blur'
     }
   ]
@@ -263,12 +286,16 @@ const getTypeName = (row: PersonResponse) => {
   }
 }
 
-// 获取人员编号
+// 获取人员编号（根据权限决定是否显示敏感信息）
 const getPersonNo = (row: PersonResponse) => {
+  if (!canViewSensitiveInfo.value) {
+    return '***' // 隐藏敏感信息
+  }
+  
   if (row.type === 'student') {
-    return (row as any).student_no || ''
+    return (row as any).student_no || '未设置'
   } else if (row.type === 'teacher') {
-    return (row as any).employee_no || ''
+    return (row as any).employee_no || '未设置'
   }
   return ''
 }
@@ -329,7 +356,7 @@ const loadDepartments = async () => {
   departmentsLoading.value = true
   try {
     const response = await departmentApi.list({ page: 1, limit: 100 })
-    departments.value = response.items
+    departments.value = response.data.items
   } catch (error) {
     console.error('Error loading departments:', error)
   } finally {
@@ -524,9 +551,13 @@ const handleSubmit = async () => {
       if (data.type_ === 'teacher') {
         // 教师使用classes数组，删除class_id字段
         delete cleaned.class_id
-        // 如果classes数组为空，设置为undefined
-        if (cleaned.classes && cleaned.classes.length === 0) {
-          cleaned.classes = undefined
+        // 清理classes数组：移除class_id为空字符串的条目
+        if (cleaned.classes && Array.isArray(cleaned.classes)) {
+          cleaned.classes = cleaned.classes.filter((cls: any) => cls.class_id && cls.class_id.trim() !== '')
+          // 如果classes数组为空，设置为undefined
+          if (cleaned.classes.length === 0) {
+            cleaned.classes = undefined
+          }
         }
       } else {
         // 学生或其他类型使用class_id字段，删除classes数组
@@ -553,6 +584,7 @@ const handleSubmit = async () => {
       ElMessage.success('更新成功')
     } else {
       // 创建
+      console.log('Sending create request with data:', cleanedForm)
       await personApi.create(cleanedForm)
       ElMessage.success('创建成功')
     }
@@ -643,5 +675,11 @@ onMounted(() => {
 .dialog-footer {
   display: flex;
   justify-content: flex-end;
+}
+
+.sensitive-info-hidden {
+  color: #999;
+  font-style: italic;
+  user-select: none;
 }
 </style>

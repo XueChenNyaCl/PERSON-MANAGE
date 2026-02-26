@@ -61,6 +61,11 @@ const router = createRouter({
           path: 'notice',
           name: 'notice',
           component: () => import('../views/NoticeView.vue')
+        },
+        {
+          path: 'system/permission',
+          name: 'system-permission',
+          component: () => import('../views/SystemPermissionView.vue')
         }
       ]
     },
@@ -88,6 +93,10 @@ const router = createRouter({
     {
       path: '/notice',
       redirect: '/dashboard/notice'
+    },
+    {
+      path: '/system/permission',
+      redirect: '/dashboard/system/permission'
     }
   ]
 })

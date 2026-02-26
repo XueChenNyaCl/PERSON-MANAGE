@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 # Web框架
-axum = { version = "^0.7.0", features = ["ws"] }
+axum = { version = "^0.7.0", features = ["ws", "macros"] }
 axum-extra = { version = "^0.9.0", features = ["typed-header"] }
 tokio = { version = "^1.32.0", features = ["full"] }
 hyper = { version = "^1.0.0", features = ["full"] }
@@ -35,6 +35,7 @@ chrono = { version = "^0.4.31", features = ["serde"] }
 uuid = { version = "^1.4.0", features = ["v4", "serde"] }
 anyhow = "^1.0.75"
 thiserror = "^1.0.48"
+serde_yaml = "^0.9.25"
 
 # 插件系统
 dyn-clone = "^1.0.16"
@@ -60,3 +61,7 @@ path = "simple_migration.rs"
 [[bin]]
 name = "run_login_migration"
 path = "run_login_migration.rs"
+
+[[bin]]
+name = "run_permission_migration"
+path = "run_permission_migration.rs"

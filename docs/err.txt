@@ -1,0 +1,141 @@
+permission.ts:139 XHR 加载失败:POST "http://localhost:3001/api/permissions/apply-yaml".
+dispatchXhrRequest @ xhr.js:198
+xhr @ xhr.js:15
+dispatchRequest @ dispatchRequest.js:51
+Promise.then
+_request @ Axios.js:172
+request @ Axios.js:41
+httpMethod @ Axios.js:233
+wrap @ bind.js:12
+applyYamlTemplateBulk @ permission.ts:139
+applyYamlTemplate @ SystemPermissionView.vue:533
+callWithErrorHandling @ runtime-core.esm-bundler.js:199
+callWithAsyncErrorHandling @ runtime-core.esm-bundler.js:206
+emit @ runtime-core.esm-bundler.js:4404
+(匿名) @ runtime-core.esm-bundler.js:8253
+handleClick @ use-button.ts:85
+callWithErrorHandling @ runtime-core.esm-bundler.js:199
+callWithAsyncErrorHandling @ runtime-core.esm-bundler.js:206
+invoker @ runtime-dom.esm-bundler.js:730
+person.ts:116 XHR 已完成加载:GET "http://localhost:3001/api/persons?page=1&limit=10000"。
+dispatchXhrRequest @ xhr.js:198
+xhr @ xhr.js:15
+dispatchRequest @ dispatchRequest.js:51
+Promise.then
+_request @ Axios.js:172
+request @ Axios.js:41
+Axios.<computed> @ Axios.js:220
+wrap @ bind.js:12
+list @ person.ts:116
+refreshData @ SystemPermissionView.vue:384
+callWithErrorHandling @ runtime-core.esm-bundler.js:199
+callWithAsyncErrorHandling @ runtime-core.esm-bundler.js:206
+emit @ runtime-core.esm-bundler.js:4404
+(匿名) @ runtime-core.esm-bundler.js:8253
+handleClick @ use-button.ts:85
+callWithErrorHandling @ runtime-core.esm-bundler.js:199
+callWithAsyncErrorHandling @ runtime-core.esm-bundler.js:206
+invoker @ runtime-dom.esm-bundler.js:730
+SystemPermissionView.vue:517 === YAML IMPORT DEBUG ===
+SystemPermissionView.vue:518 yamlContent: # 教师权限模板
+# 优先级: 10 (默认)
+# 描述: 教师权限，可以管理班级、考勤、成绩等
+
+permissions:
+  # 人员查看权限
+  - permission: person.view
+    priority: 10
+  - permission: person.sensitive.view
+    priority: 10
+  
+  # 班级管理权限
+  - permission: class.view
+    priority: 10
+  - permission: class.manage
+    priority: 10
+  - permission: class.update_teacher
+    priority: 10
+  
+  # 部门查看权限
+  - permission: department.view
+    priority: 10
+  
+  # 考勤管理权限
+  - permission: attendance.manage
+    priority: 10
+  
+  # 成绩管理权限
+  - permission: score.manage
+    priority: 10
+  
+  # 通知查看权限
+  - permission: notice.view
+    priority: 10
+  
+  # 仪表板权限
+  - permission: dashboard.view
+    priority: 10
+  
+  # 通配符权限
+  - permission: class.*
+    priority: 5
+  - permission: attendance.*
+    priority: 5
+  - permission: score.*
+    priority: 5
+  
+  # 否定权限 - 限制删除操作
+  - permission: -person.delete
+    priority: 15
+  - permission: -person.manage.delete
+    priority: 15
+  - permission: -class.delete
+    priority: 15
+  - permission: -department.delete
+    priority: 15
+  - permission: -department.manage.delete
+    priority: 15
+SystemPermissionView.vue:519 targetType: user
+SystemPermissionView.vue:520 targetIds: []
+SystemPermissionView.vue:521 role: undefined
+SystemPermissionView.vue:522 merge_strategy: overwrite
+SystemPermissionView.vue:532 Request payload: {
+  "yaml_content": "# 教师权限模板\n# 优先级: 10 (默认)\n# 描述: 教师权限，可以管理班级、考勤、成绩等\n\npermissions:\n  # 人员查看权限\n  - permission: person.view\n    priority: 10\n  - permission: person.sensitive.view\n    priority: 10\n  \n  # 班级管理权限\n  - permission: class.view\n    priority: 10\n  - permission: class.manage\n    priority: 10\n  - permission: class.update_teacher\n    priority: 10\n  \n  # 部门查看权限\n  - permission: department.view\n    priority: 10\n  \n  # 考勤管理权限\n  - permission: attendance.manage\n    priority: 10\n  \n  # 成绩管理权限\n  - permission: score.manage\n    priority: 10\n  \n  # 通知查看权限\n  - permission: notice.view\n    priority: 10\n  \n  # 仪表板权限\n  - permission: dashboard.view\n    priority: 10\n  \n  # 通配符权限\n  - permission: class.*\n    priority: 5\n  - permission: attendance.*\n    priority: 5\n  - permission: score.*\n    priority: 5\n  \n  # 否定权限 - 限制删除操作\n  - permission: -person.delete\n    priority: 15\n  - permission: -person.manage.delete\n    priority: 15\n  - permission: -class.delete\n    priority: 15\n  - permission: -department.delete\n    priority: 15\n  - permission: -department.manage.delete\n    priority: 15",
+  "target_type": "user",
+  "merge_strategy": "overwrite"
+}
+permission.ts:139   POST http://localhost:3001/api/permissions/apply-yaml 500 (Internal Server Error)
+dispatchXhrRequest @ xhr.js:198
+xhr @ xhr.js:15
+dispatchRequest @ dispatchRequest.js:51
+Promise.then
+_request @ Axios.js:172
+request @ Axios.js:41
+httpMethod @ Axios.js:233
+wrap @ bind.js:12
+applyYamlTemplateBulk @ permission.ts:139
+applyYamlTemplate @ SystemPermissionView.vue:533
+callWithErrorHandling @ runtime-core.esm-bundler.js:199
+callWithAsyncErrorHandling @ runtime-core.esm-bundler.js:206
+emit @ runtime-core.esm-bundler.js:4404
+(匿名) @ runtime-core.esm-bundler.js:8253
+handleClick @ use-button.ts:85
+callWithErrorHandling @ runtime-core.esm-bundler.js:199
+callWithAsyncErrorHandling @ runtime-core.esm-bundler.js:206
+invoker @ runtime-dom.esm-bundler.js:730
+SystemPermissionView.vue:548  应用YAML模板失败: AxiosError: Request failed with status code 500
+    at settle (settle.js:19:12)
+    at XMLHttpRequest.onloadend (xhr.js:59:7)
+    at Axios.request (Axios.js:46:41)
+    at async applyYamlTemplate (SystemPermissionView.vue:533:22)
+applyYamlTemplate @ SystemPermissionView.vue:548
+await in applyYamlTemplate
+callWithErrorHandling @ runtime-core.esm-bundler.js:199
+callWithAsyncErrorHandling @ runtime-core.esm-bundler.js:206
+emit @ runtime-core.esm-bundler.js:4404
+(匿名) @ runtime-core.esm-bundler.js:8253
+handleClick @ use-button.ts:85
+callWithErrorHandling @ runtime-core.esm-bundler.js:199
+callWithAsyncErrorHandling @ runtime-core.esm-bundler.js:206
+invoker @ runtime-dom.esm-bundler.js:730
+permission.ts:139 XHR 加载失败:POST "http://localhost:3001/api/permissions/apply-yaml"

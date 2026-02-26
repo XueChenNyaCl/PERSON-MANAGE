@@ -2,12 +2,15 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     Json,
+    Extension,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::api::routes::AppState;
+use crate::core::auth::Claims;
 use crate::core::error::AppError;
+use crate::core::permission::PermissionManager;
 use crate::models::person::{
     ParentResponse, Person, PersonCreate, PersonResponse, PersonUpdate, StudentResponse,
     TeacherResponse,
@@ -72,6 +75,8 @@ pub async fn create(
     State(state): State<AppState>,
     Json(payload): Json<PersonCreate>,
 ) -> Result<Json<PersonResponse>, AppError> {
+    println!("=== CREATE PERSON DEBUG ===");
+    println!("Received payload: {:?}", payload);
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
 
     let person = create_person(&pool, payload).await?;
@@ -101,9 +106,15 @@ pub async fn update(
 
 pub async fn delete(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
+    
+    // 检查删除人员权限
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let manager = PermissionManager::new(pool.clone());
+    manager.require_permission(user_id, "person.delete").await?;
 
     delete_person(&pool, id).await?;
 
@@ -576,6 +587,9 @@ async fn create_person(
             let student_no = payload.student_no.ok_or_else(|| {
                 AppError::InvalidInput("student_no is required for student".to_string())
             })?;
+            if student_no.trim().is_empty() {
+                return Err(AppError::InvalidInput("student_no cannot be empty".to_string()));
+            }
             sqlx::query(
                 "INSERT INTO students (person_id, student_no, class_id, enrollment_date, status)
                  VALUES ($1, $2, $3, $4, 'enrolled')",
@@ -591,6 +605,9 @@ async fn create_person(
             let employee_no = payload.employee_no.ok_or_else(|| {
                 AppError::InvalidInput("employee_no is required for teacher".to_string())
             })?;
+            if employee_no.trim().is_empty() {
+                return Err(AppError::InvalidInput("employee_no cannot be empty".to_string()));
+            }
             sqlx::query(
                 "INSERT INTO teachers (person_id, employee_no, department_id, title, hire_date)
                  VALUES ($1, $2, $3, $4, $5)",

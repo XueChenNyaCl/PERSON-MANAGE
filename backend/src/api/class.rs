@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::api::routes::AppState;
+use crate::core::auth::Claims;
 use crate::core::error::AppError;
+use crate::core::permission::PermissionManager;
 use crate::models::class::{Class, ClassCreate, ClassResponse, ClassUpdate};
 
 #[derive(Debug, Deserialize)]
@@ -75,20 +77,35 @@ pub async fn get(
 
 pub async fn update(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
     Json(payload): Json<ClassUpdate>,
 ) -> Result<Json<ClassResponse>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
-
+    
+    // 检查权限：如果尝试更新班主任，需要class.update_teacher权限
+    if payload.teacher_id.is_some() {
+        // 使用新的权限系统检查用户是否有class.update_teacher权限
+        let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+        let manager = PermissionManager::new(pool.clone());
+        manager.require_permission(user_id, "class.update_teacher").await?;
+    }
+    
     let class = update_class(&pool, id, payload).await?;
     Ok(Json(class))
 }
 
 pub async fn delete(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
+    
+    // 检查删除班级权限
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let manager = PermissionManager::new(pool.clone());
+    manager.require_permission(user_id, "class.delete").await?;
 
     delete_class(&pool, id).await?;
     Ok(StatusCode::NO_CONTENT)

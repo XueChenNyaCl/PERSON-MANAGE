@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::api::routes::AppState;
+use crate::core::auth::Claims;
 use crate::core::error::AppError;
+use crate::core::permission::PermissionManager;
 use crate::models::department::{
     Department, DepartmentCreate, DepartmentResponse, DepartmentUpdate,
 };
@@ -74,20 +76,32 @@ pub async fn get(
 
 pub async fn update(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
     Json(payload): Json<DepartmentUpdate>,
 ) -> Result<Json<DepartmentResponse>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
-
+    
+    // 检查权限：任何部门更新都需要department.update权限
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let manager = PermissionManager::new(pool.clone());
+    manager.require_permission(user_id, "department.update").await?;
+    
     let department = update_department(&pool, id, payload).await?;
     Ok(Json(department))
 }
 
 pub async fn delete(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
+    
+    // 检查删除部门权限
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let manager = PermissionManager::new(pool.clone());
+    manager.require_permission(user_id, "department.delete").await?;
 
     delete_department(&pool, id).await?;
     Ok(StatusCode::NO_CONTENT)

@@ -1,251 +1,37 @@
 <template>
   <div class="dashboard-container">
     <!-- 侧边栏 -->
+    <!-- 侧边栏 -->
     <div class="sidebar">
-      <!-- 1. 首页 / 仪表盘 -->
-      <div class="sidebar-section">
+      <!-- 仪表盘（独立菜单项，没有分组） -->
+      <div class="sidebar-section" v-if="dashboardMenuItem">
         <div class="sidebar-section-title">首页 / 仪表盘</div>
-        <div class="sidebar-item" :class="{ active: isActive('dashboard') }" @click="navigateTo('dashboard')">
+        <div 
+          class="sidebar-item" 
+          :class="{ active: isDashboardActive }" 
+          @click="navigateToDashboard"
+        >
           <div class="sidebar-icon">
-            <el-icon><House /></el-icon>
+            <el-icon><component :is="getIconComponent(dashboardMenuItem.icon)" /></el-icon>
           </div>
-          <span>仪表盘</span>
+          <span>{{ dashboardMenuItem.title }}</span>
         </div>
       </div>
       
-      <!-- 2. 人员管理 -->
-      <div class="sidebar-section">
-        <div class="sidebar-section-title">人员管理</div>
-        <div class="sidebar-item" :class="{ active: isActive('person') }" @click="navigateTo('person')">
+      <!-- 动态菜单分组 -->
+      <div v-for="group in filteredMenuGroups" :key="group.id" class="sidebar-section">
+        <div class="sidebar-section-title">{{ group.title }}</div>
+        <div
+          v-for="item in getMenuItemsByGroup(group.id)"
+          :key="item.id"
+          class="sidebar-item"
+          :class="{ active: isMenuItemActive(item) }"
+          @click="navigateToMenuItem(item)"
+        >
           <div class="sidebar-icon">
-            <el-icon><User /></el-icon>
+            <el-icon><component :is="getIconComponent(item.icon)" /></el-icon>
           </div>
-          <span>人员列表</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('class') }" @click="navigateTo('class')">
-          <div class="sidebar-icon">
-            <el-icon><Suitcase /></el-icon>
-          </div>
-          <span>班级列表</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('class/manage') }" @click="navigateTo('class/manage')">
-          <div class="sidebar-icon">
-            <el-icon><Operation /></el-icon>
-          </div>
-          <span>班级管理</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('department') }" @click="navigateTo('department')">
-          <div class="sidebar-icon">
-            <el-icon><OfficeBuilding /></el-icon>
-          </div>
-          <span>部门列表</span>
-        </div>
-      </div>
-      
-      <!-- 5. 考勤管理 -->
-      <div class="sidebar-section">
-        <div class="sidebar-section-title">考勤管理</div>
-        <div class="sidebar-item" :class="{ active: isActive('attendance/record') }" @click="navigateTo('attendance/record')">
-          <div class="sidebar-icon">
-            <el-icon><Timer /></el-icon>
-          </div>
-          <span>考勤记录</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('attendance/stat') }" @click="navigateTo('attendance/stat')">
-          <div class="sidebar-icon">
-            <el-icon><DataAnalysis /></el-icon>
-          </div>
-          <span>考勤统计</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('attendance/rule') }" @click="navigateTo('attendance/rule')">
-          <div class="sidebar-icon">
-            <el-icon><Operation /></el-icon>
-          </div>
-          <span>考勤规则</span>
-        </div>
-      </div>
-      
-      <!-- 4. 消费管理 -->
-      <div class="sidebar-section">
-        <div class="sidebar-section-title">消费管理</div>
-        <div class="sidebar-item" :class="{ active: isActive('consumption/record') }" @click="navigateTo('consumption/record')">
-          <div class="sidebar-icon">
-            <el-icon><Money /></el-icon>
-          </div>
-          <span>消费记录</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('consumption/stat') }" @click="navigateTo('consumption/stat')">
-          <div class="sidebar-icon">
-            <el-icon><TrendCharts /></el-icon>
-          </div>
-          <span>消费统计</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('consumption/setting') }" @click="navigateTo('consumption/setting')">
-          <div class="sidebar-icon">
-            <el-icon><Setting /></el-icon>
-          </div>
-          <span>消费设置</span>
-        </div>
-      </div>
-      
-      <!-- 5. 分组管理 -->
-      <div class="sidebar-section">
-        <div class="sidebar-section-title">分组管理</div>
-        <div class="sidebar-item" :class="{ active: isActive('group/class') }" @click="navigateTo('group/class')">
-          <div class="sidebar-icon">
-            <el-icon><Suitcase /></el-icon>
-          </div>
-          <span>班级列表</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('group/study') }" @click="navigateTo('group/study')">
-          <div class="sidebar-icon">
-            <el-icon><Collection /></el-icon>
-          </div>
-          <span>学习小组</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('group/dorm') }" @click="navigateTo('group/dorm')">
-          <div class="sidebar-icon">
-            <el-icon><House /></el-icon>
-          </div>
-          <span>宿舍管理</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('group/ranking') }" @click="navigateTo('group/ranking')">
-          <div class="sidebar-icon">
-            <el-icon><Top /></el-icon>
-          </div>
-          <span>小组评分榜</span>
-        </div>
-      </div>
-      
-      <!-- 6. 评分管理 -->
-      <div class="sidebar-section">
-        <div class="sidebar-section-title">评分管理</div>
-        <div class="sidebar-item" :class="{ active: isActive('score/record') }" @click="navigateTo('score/record')">
-          <div class="sidebar-icon">
-            <el-icon><GoodsFilled /></el-icon>
-          </div>
-          <span>评分记录</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('score/rule') }" @click="navigateTo('score/rule')">
-          <div class="sidebar-icon">
-            <el-icon><Operation /></el-icon>
-          </div>
-          <span>评分规则</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('score/appeal') }" @click="navigateTo('score/appeal')">
-          <div class="sidebar-icon">
-            <el-icon><Reading /></el-icon>
-          </div>
-          <span>申诉审核</span>
-        </div>
-      </div>
-      
-      <!-- 7. 评选管理 -->
-      <div class="sidebar-section">
-        <div class="sidebar-section-title">评选管理</div>
-        <div class="sidebar-item" :class="{ active: isActive('election/initiate') }" @click="navigateTo('election/initiate')">
-          <div class="sidebar-icon">
-            <el-icon><Star /></el-icon>
-          </div>
-          <span>发起评选</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('election/vote') }" @click="navigateTo('election/vote')">
-          <div class="sidebar-icon">
-            <el-icon><Check /></el-icon>
-          </div>
-          <span>投票管理</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('election/result') }" @click="navigateTo('election/result')">
-          <div class="sidebar-icon">
-            <el-icon><Flag /></el-icon>
-          </div>
-          <span>评选结果</span>
-        </div>
-      </div>
-      
-      <!-- 8. 通知公告 -->
-      <div class="sidebar-section">
-        <div class="sidebar-section-title">通知公告</div>
-        <div class="sidebar-item" :class="{ active: isActive('notice/publish') }" @click="navigateTo('notice/publish')">
-          <div class="sidebar-icon">
-            <el-icon><Edit /></el-icon>
-          </div>
-          <span>发布通知</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('notice/list') }" @click="navigateTo('notice/list')">
-          <div class="sidebar-icon">
-            <el-icon><Message /></el-icon>
-          </div>
-          <span>通知列表</span>
-        </div>
-      </div>
-      
-      <!-- 9. 校历管理 -->
-      <div class="sidebar-section">
-        <div class="sidebar-section-title">校历管理</div>
-        <div class="sidebar-item" :class="{ active: isActive('calendar/semester') }" @click="navigateTo('calendar/semester')">
-          <div class="sidebar-icon">
-            <el-icon><Calendar /></el-icon>
-          </div>
-          <span>学期设置</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('calendar/holiday') }" @click="navigateTo('calendar/holiday')">
-          <div class="sidebar-icon">
-            <el-icon><Calendar /></el-icon>
-          </div>
-          <span>节假日管理</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('calendar/view') }" @click="navigateTo('calendar/view')">
-          <div class="sidebar-icon">
-            <el-icon><Calendar /></el-icon>
-          </div>
-          <span>校历视图</span>
-        </div>
-      </div>
-      
-      <!-- 10. 活动管理 -->
-      <div class="sidebar-section">
-        <div class="sidebar-section-title">活动管理</div>
-        <div class="sidebar-item" :class="{ active: isActive('activity/record') }" @click="navigateTo('activity/record')">
-          <div class="sidebar-icon">
-            <el-icon><Tickets /></el-icon>
-          </div>
-          <span>活动记录</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('activity/score') }" @click="navigateTo('activity/score')">
-          <div class="sidebar-icon">
-            <el-icon><Trophy /></el-icon>
-          </div>
-          <span>活动加分</span>
-        </div>
-      </div>
-      
-      <!-- 11. 系统设置 -->
-      <div class="sidebar-section">
-        <div class="sidebar-section-title">系统设置</div>
-        <div class="sidebar-item" :class="{ active: isActive('system/permission') }" @click="navigateTo('system/permission')">
-          <div class="sidebar-icon">
-            <el-icon><Lock /></el-icon>
-          </div>
-          <span>用户权限</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('system/plugin') }" @click="navigateTo('system/plugin')">
-          <div class="sidebar-icon">
-            <el-icon><Grid /></el-icon>
-          </div>
-          <span>插件管理</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('system/log') }" @click="navigateTo('system/log')">
-          <div class="sidebar-icon">
-            <el-icon><Document /></el-icon>
-          </div>
-          <span>日志查看</span>
-        </div>
-        <div class="sidebar-item" :class="{ active: isActive('system/config') }" @click="navigateTo('system/config')">
-          <div class="sidebar-icon">
-            <el-icon><Setting /></el-icon>
-          </div>
-          <span>系统配置</span>
+          <span>{{ item.title }}</span>
         </div>
       </div>
     </div>
@@ -395,7 +181,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '../store/auth'
 import { menuItems, menuGroups } from '../config/menu'
-import { hasPermission } from '../utils/permission'
+import type { MenuItem } from '../config/types'
 
 // 图标名称到组件的映射
 const iconComponents = {
@@ -436,7 +222,6 @@ const userMenuVisible = ref(false)
 
 const username = computed(() => authStore.userName || '管理员')
 const userRole = computed(() => authStore.userRole || '')
-const isAdmin = computed(() => userRole.value === 'admin')
 
 // 过滤后的菜单项（根据权限）
 const filteredMenuGroups = computed(() => {
@@ -444,26 +229,65 @@ const filteredMenuGroups = computed(() => {
     // 获取该分组下的所有菜单项
     const groupItems = menuItems.filter(item => item.parentId === group.id)
     // 如果分组下有至少一个菜单项用户有权限访问，则显示该分组
-    return groupItems.some(item => authStore.hasPermission(item.requiredPermission))
+    return groupItems.some(item => {
+      if (!item.requiredPermission) return true // 不需要权限
+      return authStore.hasPermission(item.requiredPermission)
+    })
   })
 })
 
 const filteredMenuItems = computed(() => {
-  return menuItems.filter(item => authStore.hasPermission(item.requiredPermission))
+  return menuItems.filter(item => {
+    if (!item.requiredPermission) return true // 不需要权限
+    return authStore.hasPermission(item.requiredPermission)
+  })
 })
+
+// 仪表盘菜单项（没有分组的独立菜单项）
+const dashboardMenuItem = computed(() => {
+  return menuItems.find(item => {
+    if (!item.parentId) {
+      if (!item.requiredPermission) return true // 不需要权限
+      return authStore.hasPermission(item.requiredPermission)
+    }
+    return false
+  })
+})
+
+// 仪表盘是否激活
+const isDashboardActive = computed(() => {
+  return route.path === '/dashboard'
+})
+
+// 根据分组ID获取菜单项
+const getMenuItemsByGroup = (groupId: string) => {
+  return filteredMenuItems.value.filter(item => item.parentId === groupId)
+}
+
+// 检查菜单项是否激活
+const isMenuItemActive = (item: MenuItem) => {
+  if (!item.path) return false
+  return route.path === item.path || route.path === `${item.path}/`
+}
+
+// 导航到仪表盘
+const navigateToDashboard = () => {
+  router.push('/dashboard')
+}
+
+// 导航到菜单项
+const navigateToMenuItem = (item: MenuItem) => {
+  if (item.path) {
+    router.push(item.path)
+  }
+}
 
 // 根据图标名称获取组件
 const getIconComponent = (iconName: string) => {
   return iconComponents[iconName as keyof typeof iconComponents] || House
 }
 
-const navigateTo = (path: string) => {
-  router.push(`/dashboard/${path}`)
-}
 
-const isActive = (path: string) => {
-  return route.path === `/dashboard/${path}` || route.path === `/dashboard/${path}/` || (path === 'dashboard' && route.path === '/dashboard')
-}
 
 const toggleUserMenu = () => {
   userMenuVisible.value = !userMenuVisible.value
