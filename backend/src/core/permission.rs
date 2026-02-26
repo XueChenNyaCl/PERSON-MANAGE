@@ -333,7 +333,33 @@ impl PermissionTemplate {
     
     /// 从YAML字符串加载权限模板
     pub fn from_yaml_str(yaml_content: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let template: PermissionTemplate = serde_yaml::from_str(yaml_content)?;
+        // 预处理YAML内容，处理通配符权限
+        // YAML将*解释为别名，需要处理这种情况
+        let processed_content = yaml_content
+            .lines()
+            .map(|line| {
+                if line.trim().starts_with("- permission:") {
+                    // 提取permission值
+                    if let Some((_, value)) = line.split_once(":") {
+                        let value = value.trim();
+                        // 如果值以*开头且不是用引号包围的，添加引号
+                        if value.starts_with('*') && !value.starts_with('"') && !value.starts_with('\'') {
+                            return line.replace(&format!(": {}", value), &format!(": \"{}\"", value));
+                        }
+                    }
+                }
+                line.to_string()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        
+        println!("=== YAML TEMPLATE DEBUG: Processed YAML ===");
+        println!("First 5 lines of processed YAML:");
+        for (i, line) in processed_content.lines().take(5).enumerate() {
+            println!("{}: {}", i+1, line);
+        }
+        
+        let template: PermissionTemplate = serde_yaml::from_str(&processed_content)?;
         Ok(template)
     }
     

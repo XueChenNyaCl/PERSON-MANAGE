@@ -118,8 +118,13 @@ pub async fn list_role_permissions(
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
     
+    println!("=== YAML TEMPLATE DEBUG: Checking permissions ===");
+    println!("User ID: {}", user_id);
+    
     let manager = PermissionManager::new(pool.clone());
     let has_admin_permission = manager.check_permission(user_id, "system.settings").await;
+    
+    println!("Permission check result for system.settings: {:?}", has_admin_permission);
     
     match has_admin_permission {
         PermissionResult::Allowed => {
@@ -439,33 +444,55 @@ pub async fn apply_yaml_template(
     
     match has_admin_permission {
         PermissionResult::Allowed => {
+            println!("=== YAML TEMPLATE DEBUG: Parsing YAML ===");
+            
+            // 处理Windows换行符：将\r\n替换为\n
+            let normalized_yaml = payload.yaml_content.replace("\r\n", "\n");
+            println!("YAML normalized, original length: {}, normalized length: {}", 
+                     payload.yaml_content.len(), normalized_yaml.len());
+            
             // 解析YAML内容
-            let template = match crate::core::permission::PermissionTemplate::from_yaml_str(&payload.yaml_content) {
-                Ok(template) => template,
-                Err(e) => return Err(AppError::InvalidInput(format!("YAML解析失败: {}", e))),
+            let template = match crate::core::permission::PermissionTemplate::from_yaml_str(&normalized_yaml) {
+                Ok(template) => {
+                    println!("YAML parsing successful, {} permissions found", template.permissions.len());
+                    template
+                },
+                Err(e) => {
+                    println!("YAML parsing failed: {}", e);
+                    return Err(AppError::InvalidInput(format!("YAML解析失败: {}", e)));
+                },
             };
             
             let mut applied_count = 0;
             
             match payload.target_type.as_str() {
                 "user" => {
+                    println!("=== YAML TEMPLATE DEBUG: Applying to users ===");
                     if let Some(target_ids) = payload.target_ids {
+                        println!("Target user IDs: {:?}", target_ids);
                         for target_id in target_ids {
+                            println!("Applying template to user: {}", target_id);
                             if let Err(e) = template.apply_to_user(&pool, target_id).await {
                                 // 记录错误但继续处理其他用户
+                                println!("应用模板到用户 {} 失败: {}", target_id, e);
                                 eprintln!("应用模板到用户 {} 失败: {}", target_id, e);
                             } else {
+                                println!("Successfully applied template to user: {}", target_id);
                                 applied_count += 1;
                             }
                         }
                     }
                 },
                 "role" => {
+                    println!("=== YAML TEMPLATE DEBUG: Applying to role ===");
                     if let Some(role) = payload.role {
+                        println!("Target role: {}", role);
                         if let Err(e) = template.apply_to_role(&pool, &role).await {
                             // 记录错误
+                            println!("应用模板到角色 {} 失败: {}", role, e);
                             eprintln!("应用模板到角色 {} 失败: {}", role, e);
                         } else {
+                            println!("Successfully applied template to role: {}", role);
                             applied_count += 1;
                         }
                     }
@@ -492,12 +519,19 @@ pub async fn apply_yaml_template(
                 _ => return Err(AppError::InvalidInput("无效的目标类型".to_string())),
             }
             
+            println!("=== YAML TEMPLATE DEBUG: Final result ===");
+            println!("Applied count: {}", applied_count);
+            println!("Success: {}", applied_count > 0);
+            
             Ok(Json(YamlApplyResponse {
                 success: applied_count > 0,
                 message: format!("成功应用到 {} 个目标", applied_count),
                 applied_count,
             }))
         }
-        _ => Err(AppError::Auth("没有权限应用YAML模板".to_string())),
+        _ => {
+            println!("=== YAML TEMPLATE DEBUG: Permission denied ===");
+            Err(AppError::Auth("没有权限应用YAML模板".to_string()))
+        }
     }
 }
