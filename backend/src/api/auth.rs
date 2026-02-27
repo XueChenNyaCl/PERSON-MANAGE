@@ -59,10 +59,16 @@ pub async fn login(
     State(state): State<AppState>,
     Json(login_req): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, (StatusCode, String)> {
+    println!("=== LOGIN DEBUG ===");
+    println!("登录请求: username={}, remember_me={}", login_req.username, login_req.remember_me);
+    
     // 1. 查询用户
     let pool = match &state.pool {
         Some(pool) => pool,
-        None => return Err((StatusCode::INTERNAL_SERVER_ERROR, "数据库连接未初始化".to_string())),
+        None => {
+            println!("错误: 数据库连接未初始化");
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, "数据库连接未初始化".to_string()));
+        }
     };
 
     let user = sqlx::query_as!(
@@ -72,10 +78,22 @@ pub async fn login(
     )
     .fetch_optional(pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    .map_err(|e| {
+        println!("数据库查询错误: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
     
     // 2. 验证用户存在
-    let user = user.ok_or((StatusCode::UNAUTHORIZED, "用户名或密码错误".to_string()))?;
+    let user = match user {
+        Some(u) => {
+            println!("找到用户: id={}, role={}, is_active={:?}", u.id, u.role, u.is_active);
+            u
+        }
+        None => {
+            println!("错误: 用户不存在或已禁用 - username={}", login_req.username);
+            return Err((StatusCode::UNAUTHORIZED, "用户名或密码错误".to_string()));
+        }
+    };
     
     // 2.1 验证用户是否激活
     if user.is_active != Some(true) {
@@ -83,20 +101,31 @@ pub async fn login(
     }
     
     // 3. 验证密码
-    println!("Debug: username = {}, password = {}, hash = {}", login_req.username, login_req.password, user.password_hash);
+    println!("验证密码: username={}, password_length={}", login_req.username, login_req.password.len());
     let password_valid;
     // 临时：允许admin用户使用密码"admin"登录
     if login_req.username == "admin" && login_req.password == "admin" {
-        println!("Debug: Using temporary password bypass for admin");
+        println!("使用临时密码绕过admin登录");
         password_valid = true;
     } else {
-        password_valid = verify_password(&login_req.password, &user.password_hash)
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        password_valid = match verify_password(&login_req.password, &user.password_hash) {
+            Ok(valid) => {
+                println!("密码验证结果: {}", valid);
+                valid
+            }
+            Err(e) => {
+                println!("密码验证错误: {}", e);
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+            }
+        };
     }
     
     if !password_valid {
+        println!("错误: 密码不正确");
         return Err((StatusCode::UNAUTHORIZED, "用户名或密码错误".to_string()));
     }
+    
+    println!("密码验证通过");
     
     // 4. 加载配置
     let config = load_config().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -144,57 +173,37 @@ pub async fn login(
     Ok(Json(response))
 }
 
-// 获取用户权限函数
+// 获取用户权限函数 - 从YAML模板文件加载
 pub fn get_user_permissions(role: &str) -> Vec<String> {
-    match role {
-        "admin" => vec![
-            "dashboard.view".to_string(),
-            "person.view".to_string(),      // 查看人员
-            "person.manage".to_string(),    // 管理人员
-            "person.sensitive.view".to_string(), // 查看敏感信息
-            "class.view".to_string(),       // 查看班级
-            "class.manage".to_string(),     // 管理班级
-            "class.update_teacher".to_string(), // 更新班级班主任
-            "department.view".to_string(),  // 查看部门
-            "department.manage".to_string(), // 管理部门
-            "department.update".to_string(), // 更新部门信息
-            "attendance.view".to_string(),  // 查看考勤
-            "attendance.manage".to_string(), // 管理考勤
-            "score.view".to_string(),       // 查看评分
-            "score.manage".to_string(),     // 管理评分
-            "notice.view".to_string(),      // 查看通知
-            "notice.manage".to_string(),    // 管理通知
-            "system.settings".to_string(),  // 系统设置
-        ],
-        "teacher" => vec![
-            "dashboard.view".to_string(),
-            "person.view".to_string(),
-            "person.sensitive.view".to_string(), // 可以查看敏感信息（学号、电话等）
-            "class.view".to_string(),
-            "class.manage".to_string(), // 班级管理权限
-            "class.update_teacher".to_string(), // 更新班级班主任
-            "attendance.manage".to_string(),
-            "score.manage".to_string(),
-            "notice.view".to_string(),
-            "department.view".to_string(), // 可以查看部门信息
-        ],
-        "student" => vec![
-            "dashboard.view".to_string(),
-            "person.view".to_string(),
-            "class.view".to_string(), // 可以查看班级信息
-            "attendance.view".to_string(),
-            "score.view".to_string(),
-            "notice.view".to_string(),
-        ],
-        "parent" => vec![
-            "dashboard.view".to_string(),
-            "person.view".to_string(),
-            "class.view".to_string(), // 可以查看班级信息
-            "attendance.view".to_string(),
-            "score.view".to_string(),
-            "notice.view".to_string(),
-        ],
-        _ => vec!["dashboard.view".to_string()],
+    // 尝试从YAML模板文件加载权限
+    let template_path = format!("templates/permissions/{}.yaml", role);
+    
+    match std::fs::read_to_string(&template_path) {
+        Ok(content) => {
+            // 简单的YAML解析，提取权限名称
+            let mut permissions = Vec::new();
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("- permission:") {
+                    if let Some((_, value)) = trimmed.split_once(":") {
+                        let perm = value.trim().trim_matches('"').trim_matches('\'');
+                        // 跳过否定权限（以-开头）
+                        if !perm.starts_with('-') {
+                            permissions.push(perm.to_string());
+                        }
+                    }
+                }
+            }
+            if permissions.is_empty() {
+                vec!["dashboard.view".to_string()]
+            } else {
+                permissions
+            }
+        }
+        Err(_) => {
+            // 如果文件不存在，返回默认权限
+            vec!["dashboard.view".to_string()]
+        }
     }
 }
 

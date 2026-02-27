@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS permissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     role VARCHAR(50) NOT NULL,
     permission VARCHAR(255) NOT NULL,
+    value BOOLEAN NOT NULL DEFAULT true,
     priority INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

@@ -94,6 +94,15 @@
           <el-form-item label="邮箱">
             <el-input v-model="form.email" placeholder="请输入邮箱"></el-input>
           </el-form-item>
+          <el-form-item label="密码" prop="password">
+            <el-input 
+              v-model="form.password" 
+              type="password" 
+              placeholder="请输入密码，留空则使用默认密码123456"
+              show-password
+              clearable
+            ></el-input>
+          </el-form-item>
           <el-form-item label="生日">
             <el-date-picker v-model="form.birthday" type="date" placeholder="请选择生日"></el-date-picker>
           </el-form-item>
@@ -194,6 +203,7 @@ import { personApi, type PersonResponse, type PersonCreate, type PersonUpdate, t
 import { classApi } from '../api/class'
 import { departmentApi } from '../api/department'
 import { useAuthStore } from '../store/auth'
+import '../styles/person-view.css'
 
 // 权限管理
 const authStore = useAuthStore()
@@ -226,12 +236,13 @@ const classes = ref<any[]>([])
 const departments = ref<any[]>([])
 
 // 表单数据
-const form = reactive<PersonCreate>({
+const form = reactive<PersonCreate & { password?: string }>({
   name: '',
   gender: 0,
   type_: 'student',
   phone: '',
   email: '',
+  password: '',
   birthday: '',
   student_no: '',
   class_id: '',
@@ -403,6 +414,7 @@ const handleAdd = () => {
     type_: 'student',
     phone: '',
     email: '',
+    password: '',
     birthday: '',
     student_no: '',
     class_id: '',
@@ -433,6 +445,7 @@ const handleEdit = async (row: PersonResponse) => {
     type_: row.type,
     phone: row.phone || '',
     email: row.email || '',
+    password: '', // 编辑时密码为空，表示不修改密码
     birthday: row.birthday || '',
     student_no: (row as any).student_no || '',
     class_id: (row as any).class_id || '',
@@ -539,14 +552,18 @@ const handleSubmit = async () => {
         }
       })
       // 将空字符串字段转换为undefined
-      const optionalFields = ['phone', 'email', 'birthday', 'student_no', 'class_id', 
-        'enrollment_date', 'employee_no', 'department_id', 'title', 'hire_date', 
+      const optionalFields = ['phone', 'email', 'birthday', 'student_no', 'class_id',
+        'enrollment_date', 'employee_no', 'department_id', 'title', 'hire_date',
         'wechat_openid', 'occupation']
       optionalFields.forEach(field => {
         if (cleaned[field] === '') {
           cleaned[field] = undefined
         }
       })
+      // 处理密码字段：空字符串表示不修改密码（编辑时）或使用默认密码（创建时）
+      if (cleaned.password === '') {
+        cleaned.password = undefined
+      }
       // 根据人员类型处理班级字段
       if (data.type_ === 'teacher') {
         // 教师使用classes数组，删除class_id字段
@@ -610,76 +627,5 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.person-container {
-  padding: 20px;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.search-form {
-  margin-bottom: 20px;
-}
-
-/* ID列滚动样式 */
-.id-cell {
-  max-width: 100%;
-  overflow-x: auto;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  display: block;
-  /* 隐藏滚动条但保留功能 */
-  scrollbar-width: thin;
-  scrollbar-color: #c1c1c1 #f1f1f1;
-}
-
-/* 自定义滚动条样式 */
-.id-cell::-webkit-scrollbar {
-  height: 4px;
-}
-
-.id-cell::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 4px;
-}
-
-.id-cell::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 4px;
-}
-
-.id-cell::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
-}
-
-/* 班级容器样式 */
-.classes-container {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.class-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px;
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
-  background-color: #f9f9f9;
-}
-
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.sensitive-info-hidden {
-  color: #999;
-  font-style: italic;
-  user-select: none;
-}
+/* 样式已移至 ../styles/person-view.css */
 </style>

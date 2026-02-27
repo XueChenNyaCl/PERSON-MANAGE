@@ -71,7 +71,7 @@ impl PermissionManager {
     /// 获取角色权限
     pub async fn get_role_permissions(&self, role: &str) -> Result<Vec<PermissionNode>, sqlx::Error> {
         let rows = sqlx::query(
-            "SELECT permission, priority FROM permissions 
+            "SELECT permission, value, priority FROM permissions 
              WHERE role = $1 
              ORDER BY priority DESC"
         )
@@ -82,9 +82,10 @@ impl PermissionManager {
         let mut permissions = Vec::new();
         for row in rows {
             let permission_str: String = row.get("permission");
+            let value: bool = row.get("value");
             let priority: i32 = row.get("priority");
             
-            permissions.push(PermissionNode::from_string(&permission_str, priority));
+            permissions.push(PermissionNode::new(&permission_str, value, priority));
         }
 
         Ok(permissions)
@@ -142,14 +143,15 @@ impl PermissionManager {
     }
 
     /// 添加角色权限
-    pub async fn add_role_permission(&self, role: &str, permission: &str, priority: i32) -> Result<(), sqlx::Error> {
+    pub async fn add_role_permission(&self, role: &str, permission: &str, value: bool, priority: i32) -> Result<(), sqlx::Error> {
         sqlx::query(
-            "INSERT INTO permissions (role, permission, priority) 
-             VALUES ($1, $2, $3) 
-             ON CONFLICT (role, permission) DO UPDATE SET priority = EXCLUDED.priority"
+            "INSERT INTO permissions (role, permission, value, priority) 
+             VALUES ($1, $2, $3, $4) 
+             ON CONFLICT (role, permission) DO UPDATE SET value = EXCLUDED.value, priority = EXCLUDED.priority"
         )
         .bind(role)
         .bind(permission)
+        .bind(value)
         .bind(priority)
         .execute(&self.pool)
         .await?;
@@ -247,7 +249,16 @@ pub struct PermissionNode {
 }
 
 impl PermissionNode {
-    /// 从字符串创建权限节点
+    /// 创建新的权限节点
+    fn new(permission: &str, value: bool, priority: i32) -> Self {
+        Self {
+            permission: permission.to_string(),
+            value,
+            priority,
+        }
+    }
+
+    /// 从字符串创建权限节点（用于从YAML解析，支持-前缀表示否定权限）
     fn from_string(permission_str: &str, priority: i32) -> Self {
         let (value, permission) = if permission_str.starts_with('-') {
             (false, permission_str[1..].to_string())
@@ -368,7 +379,13 @@ impl PermissionTemplate {
         let manager = PermissionManager::new(pool.clone());
         
         for item in &self.permissions {
-            manager.add_role_permission(role, &item.permission, item.priority).await?;
+            // 处理否定权限（以-开头）
+            let (permission_str, value) = if item.permission.starts_with('-') {
+                (&item.permission[1..], false)
+            } else {
+                (item.permission.as_str(), true)
+            };
+            manager.add_role_permission(role, permission_str, value, item.priority).await?;
         }
         
         Ok(())
@@ -433,7 +450,7 @@ pub async fn apply_role_template_to_user(pool: &PgPool, user_id: Uuid, role: &st
             
             // 添加最基本的dashboard.view权限
             let manager = PermissionManager::new(pool.clone());
-            manager.add_role_permission(role, "dashboard.view", 10).await?;
+            manager.add_role_permission(role, "dashboard.view", true, 10).await?;
             
             Ok(())
         }

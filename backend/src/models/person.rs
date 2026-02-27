@@ -24,6 +24,8 @@ pub struct PersonCreate {
     pub phone: Option<String>,
     pub email: Option<String>,
     pub type_: String,
+    // 密码字段，如果不提供则使用默认密码123456
+    pub password: Option<String>,
     // 子类型特定字段，根据type_决定哪些字段有效
     pub student_no: Option<String>,
     pub class_id: Option<Uuid>,
@@ -52,6 +54,8 @@ pub struct PersonUpdate {
     pub birthday: Option<String>,
     pub phone: Option<String>,
     pub email: Option<String>,
+    // 密码字段，如果提供则更新密码
+    pub password: Option<String>,
     // 子类型特定字段
     pub student_no: Option<String>,
     pub class_id: Option<Uuid>,

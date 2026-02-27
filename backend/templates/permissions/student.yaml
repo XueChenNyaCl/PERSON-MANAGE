@@ -1,36 +1,104 @@
 # 学生权限模板
 # 优先级: 7 (默认)
-# 描述: 学生基础查看权限
+# 描述: 学生基础查看权限，只能查看，不能修改任何信息
 
 permissions:
-  # 基础查看权限
+  # ========== 人员管理权限 ==========
+  # 只能查看人员列表，不能查看详情和敏感信息
   - permission: person.view
     priority: 7
-  - permission: class.view
-    priority: 7
-  - permission: attendance.view
-    priority: 7
-  - permission: score.view
-    priority: 7
-  - permission: notice.view
-    priority: 7
-  - permission: dashboard.view
-    priority: 7
-  
-  # 通配符查看权限
-  - permission: *.view
-    priority: 5
-  
-  # 否定权限（限制管理操作）
-  - permission: -person.manage
-    priority: 10
-  - permission: -class.manage
-    priority: 10
-  - permission: -attendance.manage
-    priority: 10
-  - permission: -score.manage
-    priority: 10
-  - permission: -notice.manage
+  # 否定权限：不能查看人员详情和敏感信息
+  - permission: -person.view.detail
     priority: 10
   - permission: -person.sensitive.view
     priority: 10
+  # 否定权限：不能创建/修改/删除人员
+  - permission: -person.create
+    priority: 10
+  - permission: -person.update
+    priority: 10
+  - permission: -person.update.status
+    priority: 10
+  - permission: -person.delete
+    priority: 10
+  
+  # ========== 班级管理权限 ==========
+  # 只能查看班级列表，不能查看详情
+  - permission: class.view
+    priority: 7
+  # 否定权限：不能查看班级详情
+  - permission: -class.view.detail
+    priority: 10
+  # 否定权限：不能创建/修改/删除班级
+  - permission: -class.create
+    priority: 10
+  - permission: -class.update
+    priority: 10
+  - permission: -class.update.name
+    priority: 10
+  - permission: -class.update.grade
+    priority: 10
+  - permission: -class.update.teacher
+    priority: 10
+  - permission: -class.delete
+    priority: 10
+  
+  # ========== 部门管理权限 ==========
+  # 只能查看部门
+  - permission: department.view
+    priority: 7
+  # 否定权限：不能管理部门
+  - permission: -department.create
+    priority: 10
+  - permission: -department.update
+    priority: 10
+  - permission: -department.delete
+    priority: 10
+  
+  # ========== 考勤管理权限 ==========
+  # 只能查看自己的考勤
+  - permission: attendance.view.own
+    priority: 7
+  # 否定权限：不能查看所有考勤和管理考勤
+  - permission: -attendance.view
+    priority: 10
+  - permission: -attendance.create
+    priority: 10
+  - permission: -attendance.update
+    priority: 10
+  - permission: -attendance.delete
+    priority: 10
+  
+  # ========== 成绩管理权限 ==========
+  # 只能查看自己的成绩
+  - permission: score.view.own
+    priority: 7
+  # 否定权限：不能查看所有成绩和管理成绩
+  - permission: -score.view
+    priority: 10
+  - permission: -score.create
+    priority: 10
+  - permission: -score.update
+    priority: 10
+  - permission: -score.delete
+    priority: 10
+  
+  # ========== 通知管理权限 ==========
+  # 只能查看通知
+  - permission: notice.view
+    priority: 7
+  # 否定权限：不能管理通知
+  - permission: -notice.create
+    priority: 10
+  - permission: -notice.update
+    priority: 10
+  - permission: -notice.delete
+    priority: 10
+  
+  # ========== 仪表板权限 ==========
+  - permission: dashboard.view
+    priority: 7
+  
+  # ========== 通配符查看权限（仅限查看） ==========
+  - permission: "*.view"
+    priority: 5

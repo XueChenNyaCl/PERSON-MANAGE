@@ -1,0 +1,103 @@
+/* 人员管理页面样式 */
+
+/* 容器样式 */
+.person-container {
+  padding: 20px;
+}
+
+/* 卡片头部样式 */
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* 搜索表单样式 */
+.search-form {
+  margin-bottom: 20px;
+}
+
+/* ID列滚动样式 */
+.id-cell {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  display: block;
+  /* 隐藏滚动条但保留功能 */
+  scrollbar-width: thin;
+  scrollbar-color: #c1c1c1 #f1f1f1;
+}
+
+/* 自定义滚动条样式 */
+.id-cell::-webkit-scrollbar {
+  height: 4px;
+}
+
+.id-cell::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.id-cell::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.id-cell::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* 班级容器样式 */
+.classes-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.class-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background-color: #f9f9f9;
+}
+
+/* 对话框底部样式 */
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* 敏感信息隐藏样式 */
+.sensitive-info-hidden {
+  color: #999;
+  font-style: italic;
+  user-select: none;
+}
+
+/* 密码输入框样式 */
+.password-input {
+  width: 100%;
+}
+
+.password-input :deep(.el-input__inner) {
+  font-family: monospace;
+}
+
+/* 表单标签样式 */
+.el-form-item__label {
+  font-weight: 500;
+}
+
+/* 日期选择器样式 */
+.el-date-picker {
+  width: 100%;
+}
+
+/* 选择器样式 */
+.el-select {
+  width: 100%;
+}

@@ -26,6 +26,7 @@ pub struct PermissionItem {
 pub struct AddPermissionRequest {
     pub role: String,
     pub permission: String,
+    pub value: Option<bool>,  // true=允许, false=拒绝
     pub priority: Option<i32>,
 }
 
@@ -171,7 +172,8 @@ pub async fn add_role_permission(
     match has_admin_permission {
         PermissionResult::Allowed => {
             let priority = payload.priority.unwrap_or(0);
-            manager.add_role_permission(&payload.role, &payload.permission, priority).await?;
+            let value = payload.value.unwrap_or(true);  // 默认允许
+            manager.add_role_permission(&payload.role, &payload.permission, value, priority).await?;
             
             Ok(StatusCode::CREATED)
         }
@@ -330,32 +332,69 @@ pub async fn get_permission_translations(
     // 这里应该从翻译文件或数据库加载翻译
     // 目前使用硬编码的翻译映射
     let translation_map: std::collections::HashMap<&str, &str> = [
+        // 系统权限
         ("system.settings", "系统设置"),
         ("system.permissions", "权限管理"),
-        ("person.view", "人员查看"),
-        ("person.manage", "人员管理"),
+        
+        // 人员权限
+        ("person.view", "查看人员列表"),
+        ("person.view.detail", "查看人员详情"),
         ("person.sensitive.view", "查看敏感信息"),
+        ("person.create", "创建人员"),
+        ("person.update", "更新人员信息"),
+        ("person.update.status", "更新人员状态"),
         ("person.delete", "删除人员"),
-        ("class.view", "班级查看"),
-        ("class.manage", "班级管理"),
-        ("class.update_teacher", "更新班主任"),
-        ("department.view", "部门查看"),
-        ("department.manage", "部门管理"),
-        ("department.update", "更新部门"),
-        ("attendance.view", "考勤查看"),
-        ("attendance.manage", "考勤管理"),
-        ("score.view", "成绩查看"),
-        ("score.manage", "成绩管理"),
-        ("notice.view", "通知查看"),
-        ("notice.manage", "通知管理"),
-        ("dashboard.view", "仪表板查看"),
         ("person.*", "所有人员权限"),
+        
+        // 班级权限
+        ("class.view", "查看班级列表"),
+        ("class.view.detail", "查看班级详情"),
+        ("class.create", "创建班级"),
+        ("class.update", "更新班级信息"),
+        ("class.update.name", "修改班级名称"),
+        ("class.update.grade", "修改班级年级"),
+        ("class.update.teacher", "修改班主任"),
+        ("class.delete", "删除班级"),
         ("class.*", "所有班级权限"),
+        
+        // 部门权限
+        ("department.view", "查看部门"),
+        ("department.create", "创建部门"),
+        ("department.update", "更新部门"),
+        ("department.delete", "删除部门"),
         ("department.*", "所有部门权限"),
+        
+        // 考勤权限
+        ("attendance.view", "查看所有考勤"),
+        ("attendance.view.own", "查看自己的考勤"),
+        ("attendance.create", "创建考勤记录"),
+        ("attendance.update", "更新考勤"),
+        ("attendance.delete", "删除考勤"),
         ("attendance.*", "所有考勤权限"),
+        
+        // 成绩权限
+        ("score.view", "查看所有成绩"),
+        ("score.view.own", "查看自己的成绩"),
+        ("score.create", "创建成绩"),
+        ("score.update", "更新成绩"),
+        ("score.delete", "删除成绩"),
         ("score.*", "所有成绩权限"),
+        
+        // 通知权限
+        ("notice.view", "查看通知"),
+        ("notice.create", "创建通知"),
+        ("notice.update", "更新通知"),
+        ("notice.delete", "删除通知"),
         ("notice.*", "所有通知权限"),
+        
+        // 仪表板权限
+        ("dashboard.view", "查看仪表板"),
+        
+        // 通配符权限
         ("*.view", "所有查看权限"),
+        ("*.create", "所有创建权限"),
+        ("*.update", "所有更新权限"),
+        ("*.delete", "所有删除权限"),
     ].iter().cloned().collect();
     
     let mut result = Vec::new();
@@ -380,32 +419,69 @@ pub async fn get_all_permission_keys(
 ) -> Result<Json<PermissionKeysResponse>, AppError> {
     // 返回所有已知的权限键
     let keys = vec![
+        // 系统权限
         "system.settings".to_string(),
         "system.permissions".to_string(),
+        
+        // 人员权限
         "person.view".to_string(),
-        "person.manage".to_string(),
+        "person.view.detail".to_string(),
         "person.sensitive.view".to_string(),
+        "person.create".to_string(),
+        "person.update".to_string(),
+        "person.update.status".to_string(),
         "person.delete".to_string(),
-        "class.view".to_string(),
-        "class.manage".to_string(),
-        "class.update_teacher".to_string(),
-        "department.view".to_string(),
-        "department.manage".to_string(),
-        "department.update".to_string(),
-        "attendance.view".to_string(),
-        "attendance.manage".to_string(),
-        "score.view".to_string(),
-        "score.manage".to_string(),
-        "notice.view".to_string(),
-        "notice.manage".to_string(),
-        "dashboard.view".to_string(),
         "person.*".to_string(),
+        
+        // 班级权限
+        "class.view".to_string(),
+        "class.view.detail".to_string(),
+        "class.create".to_string(),
+        "class.update".to_string(),
+        "class.update.name".to_string(),
+        "class.update.grade".to_string(),
+        "class.update.teacher".to_string(),
+        "class.delete".to_string(),
         "class.*".to_string(),
+        
+        // 部门权限
+        "department.view".to_string(),
+        "department.create".to_string(),
+        "department.update".to_string(),
+        "department.delete".to_string(),
         "department.*".to_string(),
+        
+        // 考勤权限
+        "attendance.view".to_string(),
+        "attendance.view.own".to_string(),
+        "attendance.create".to_string(),
+        "attendance.update".to_string(),
+        "attendance.delete".to_string(),
         "attendance.*".to_string(),
+        
+        // 成绩权限
+        "score.view".to_string(),
+        "score.view.own".to_string(),
+        "score.create".to_string(),
+        "score.update".to_string(),
+        "score.delete".to_string(),
         "score.*".to_string(),
+        
+        // 通知权限
+        "notice.view".to_string(),
+        "notice.create".to_string(),
+        "notice.update".to_string(),
+        "notice.delete".to_string(),
         "notice.*".to_string(),
+        
+        // 仪表板权限
+        "dashboard.view".to_string(),
+        
+        // 通配符权限
         "*.view".to_string(),
+        "*.create".to_string(),
+        "*.update".to_string(),
+        "*.delete".to_string(),
     ];
     
     Ok(Json(PermissionKeysResponse { keys }))

@@ -8,9 +8,15 @@ const api = axios.create({
 // 请求拦截器：添加JWT令牌
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+    // 登录和注册请求不需要添加token
+    const publicUrls = ['/auth/login', '/auth/register']
+    const isPublicUrl = publicUrls.some(url => config.url?.includes(url))
+    
+    if (!isPublicUrl) {
+      const token = localStorage.getItem('token')
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`
+      }
     }
     return config
   },

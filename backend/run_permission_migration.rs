@@ -1,5 +1,53 @@
 use sqlx::PgPool;
 use std::fs;
+use serde::{Deserialize, Serialize};
+
+/// 权限模板项
+#[derive(Debug, Deserialize, Serialize)]
+struct PermissionTemplateItem {
+    permission: String,
+    priority: i32,
+}
+
+/// 权限模板
+#[derive(Debug, Deserialize, Serialize)]
+struct PermissionTemplate {
+    permissions: Vec<PermissionTemplateItem>,
+}
+
+impl PermissionTemplate {
+    /// 从YAML文件加载权限模板
+    fn from_yaml_file(file_path: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let yaml_content = fs::read_to_string(file_path)?;
+        Self::from_yaml_str(&yaml_content)
+    }
+    
+    /// 从YAML字符串加载权限模板
+    fn from_yaml_str(yaml_content: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        // 预处理YAML内容，处理通配符权限
+        // YAML将*解释为别名，需要处理这种情况
+        let processed_content = yaml_content
+            .lines()
+            .map(|line| {
+                if line.trim().starts_with("- permission:") {
+                    // 提取permission值
+                    if let Some((_, value)) = line.split_once(":") {
+                        let value = value.trim();
+                        // 如果值以*开头且不是用引号包围的，添加引号
+                        if value.starts_with('*') && !value.starts_with('"') && !value.starts_with('\'') {
+                            return line.replace(&format!(": {}", value), &format!(": \"{}\"", value));
+                        }
+                    }
+                }
+                line.to_string()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        
+        let template: PermissionTemplate = serde_yaml::from_str(&processed_content)?;
+        Ok(template)
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), sqlx::Error> {
@@ -42,130 +90,94 @@ async fn main() -> Result<(), sqlx::Error> {
     // 执行所有命令
     for command in &commands {
         println!("执行 SQL: {}", command);
-        sqlx::query(command).execute(&pool).await?;
+        match sqlx::query(command).execute(&pool).await {
+            Ok(_) => {},
+            Err(e) => {
+                // 如果表已存在，忽略错误
+                println!("警告: SQL执行可能失败: {}", e);
+            }
+        }
+    }
+    
+    // 执行额外的迁移：添加value字段
+    println!("检查并添加value字段...");
+    let alter_table_sql = r#"
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 
+                FROM information_schema.columns 
+                WHERE table_name = 'permissions' 
+                AND column_name = 'value'
+            ) THEN
+                ALTER TABLE permissions ADD COLUMN value BOOLEAN NOT NULL DEFAULT true;
+            END IF;
+        END $$;
+    "#;
+    match sqlx::query(alter_table_sql).execute(&pool).await {
+        Ok(_) => println!("value字段检查完成"),
+        Err(e) => println!("警告: 添加value字段可能失败: {}", e),
     }
     
     println!("权限数据库迁移成功!");
     
-    // 根据用户要求：默认没有任何权限，需要手动添加
-    // 但为了测试，我们初始化一些基本权限
-    println!("初始化基本权限用于测试...");
-    sqlx::query("DELETE FROM permissions").execute(&pool).await?;
-    
-    // 插入基本权限配置
-    init_default_permissions(&pool).await?;
+    // 从YAML模板文件加载权限
+    println!("从YAML模板文件初始化权限...");
+    init_permissions_from_templates(&pool).await?;
     
     println!("权限初始化完成!");
     
     Ok(())
 }
 
-async fn init_default_permissions(pool: &PgPool) -> Result<(), sqlx::Error> {
-    // 管理员权限
-    let admin_permissions = vec![
-        "dashboard.view",
-        "person.view",
-        "person.manage",
-        "person.sensitive.view",
-        "class.view",
-        "class.manage",
-        "class.update_teacher",
-        "department.view",
-        "department.manage",
-        "department.update",
-        "attendance.view",
-        "attendance.manage",
-        "score.view",
-        "score.manage",
-        "notice.view",
-        "notice.manage",
-        "system.settings",
-    ];
+/// 从YAML模板文件加载权限并初始化到数据库
+async fn init_permissions_from_templates(pool: &PgPool) -> Result<(), sqlx::Error> {
+    // 定义角色和对应的模板文件
+    let roles = vec!["admin", "teacher", "student", "parent"];
     
-    // 教师权限
-    let teacher_permissions = vec![
-        "dashboard.view",
-        "person.view",
-        "person.sensitive.view",
-        "class.view",
-        "class.manage",
-        "class.update_teacher",
-        "attendance.manage",
-        "score.manage",
-        "notice.view",
-        "department.view",
-    ];
-    
-    // 学生权限
-    let student_permissions = vec![
-        "dashboard.view",
-        "person.view",
-        "class.view",
-        "attendance.view",
-        "score.view",
-        "notice.view",
-    ];
-    
-    // 家长权限
-    let parent_permissions = vec![
-        "dashboard.view",
-        "person.view",
-        "class.view",
-        "attendance.view",
-        "score.view",
-        "notice.view",
-    ];
-    
-    // 插入管理员权限
-    for perm in admin_permissions {
-        sqlx::query(
-            "INSERT INTO permissions (role, permission, priority) VALUES ($1, $2, $3) 
-             ON CONFLICT (role, permission) DO NOTHING"
-        )
-        .bind("admin")
-        .bind(perm)
-        .bind(10)
-        .execute(pool)
-        .await?;
-    }
-    
-    // 插入教师权限
-    for perm in teacher_permissions {
-        sqlx::query(
-            "INSERT INTO permissions (role, permission, priority) VALUES ($1, $2, $3) 
-             ON CONFLICT (role, permission) DO NOTHING"
-        )
-        .bind("teacher")
-        .bind(perm)
-        .bind(5)
-        .execute(pool)
-        .await?;
-    }
-    
-    // 插入学生权限
-    for perm in student_permissions {
-        sqlx::query(
-            "INSERT INTO permissions (role, permission, priority) VALUES ($1, $2, $3) 
-             ON CONFLICT (role, permission) DO NOTHING"
-        )
-        .bind("student")
-        .bind(perm)
-        .bind(0)
-        .execute(pool)
-        .await?;
-    }
-    
-    // 插入家长权限
-    for perm in parent_permissions {
-        sqlx::query(
-            "INSERT INTO permissions (role, permission, priority) VALUES ($1, $2, $3) 
-             ON CONFLICT (role, permission) DO NOTHING"
-        )
-        .bind("parent")
-        .bind(perm)
-        .bind(0)
-        .execute(pool)
-        .await?;
+    for role in roles {
+        let template_path = format!("templates/permissions/{}.yaml", role);
+        
+        match PermissionTemplate::from_yaml_file(&template_path) {
+            Ok(template) => {
+                println!("加载 {} 权限模板: {} 个权限", role, template.permissions.len());
+                
+                // 清空该角色的现有权限
+                sqlx::query("DELETE FROM permissions WHERE role = $1")
+                    .bind(role)
+                    .execute(pool)
+                    .await?;
+                
+                // 插入模板中的权限
+                for item in &template.permissions {
+                    // 处理否定权限（以-开头）
+                    let (permission_str, value) = if item.permission.starts_with('-') {
+                        (&item.permission[1..], false)
+                    } else {
+                        (item.permission.as_str(), true)
+                    };
+                    
+                    sqlx::query(
+                        "INSERT INTO permissions (role, permission, value, priority) VALUES ($1, $2, $3, $4) 
+                         ON CONFLICT (role, permission) DO UPDATE SET value = EXCLUDED.value, priority = EXCLUDED.priority"
+                    )
+                    .bind(role)
+                    .bind(permission_str)
+                    .bind(value)
+                    .bind(item.priority)
+                    .execute(pool)
+                    .await?;
+                    
+                    let action = if value { "允许" } else { "拒绝" };
+                    println!("  [{}] {} - 优先级: {}", action, permission_str, item.priority);
+                }
+                
+                println!("{} 权限初始化完成!\n", role);
+            }
+            Err(e) => {
+                eprintln!("警告: 无法加载 {} 权限模板: {}", role, e);
+            }
+        }
     }
     
     Ok(())

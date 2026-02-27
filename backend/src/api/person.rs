@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::api::routes::AppState;
 use crate::core::auth::Claims;
 use crate::core::error::AppError;
+use crate::core::password::hash_password;
 use crate::core::permission::PermissionManager;
 use crate::models::person::{
     ParentResponse, Person, PersonCreate, PersonResponse, PersonUpdate, StudentResponse,
@@ -73,11 +74,17 @@ pub async fn list(
 
 pub async fn create(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Json(payload): Json<PersonCreate>,
 ) -> Result<Json<PersonResponse>, AppError> {
     println!("=== CREATE PERSON DEBUG ===");
     println!("Received payload: {:?}", payload);
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
+    
+    // 检查创建人员权限
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let manager = PermissionManager::new(pool.clone());
+    manager.require_permission(user_id, "person.create").await?;
 
     let person = create_person(&pool, payload).await?;
     Ok(Json(person))
@@ -95,10 +102,16 @@ pub async fn get(
 
 pub async fn update(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
     Json(payload): Json<PersonUpdate>,
 ) -> Result<Json<PersonResponse>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
+    
+    // 检查更新人员权限
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let manager = PermissionManager::new(pool.clone());
+    manager.require_permission(user_id, "person.update").await?;
 
     let person = update_person(&pool, id, payload).await?;
     Ok(Json(person))
@@ -568,12 +581,48 @@ async fn create_person(
     let enrollment_date = payload.enrollment_date.and_then(|s| chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok());
     let hire_date = payload.hire_date.and_then(|s| chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok());
 
+    // 根据人员类型确定username
+    let username = match payload.type_.as_str() {
+        "student" => {
+            let student_no = payload.student_no.as_ref().ok_or_else(|| {
+                AppError::InvalidInput("student_no is required for student".to_string())
+            })?;
+            if student_no.trim().is_empty() {
+                return Err(AppError::InvalidInput("student_no cannot be empty".to_string()));
+            }
+            student_no.clone()
+        }
+        "teacher" => {
+            let employee_no = payload.employee_no.as_ref().ok_or_else(|| {
+                AppError::InvalidInput("employee_no is required for teacher".to_string())
+            })?;
+            if employee_no.trim().is_empty() {
+                return Err(AppError::InvalidInput("employee_no cannot be empty".to_string()));
+            }
+            employee_no.clone()
+        }
+        "parent" => {
+            // 家长使用手机号作为username，如果没有手机号则使用UUID
+            payload.phone.clone().unwrap_or_else(|| person_id.to_string())
+        }
+        _ => {
+            return Err(AppError::InvalidInput("Invalid person type".to_string()));
+        }
+    };
+
+    // 生成密码哈希：如果提供了密码则使用提供的密码，否则使用默认密码123456
+    let password_to_hash = payload.password.as_deref().unwrap_or("123456");
+    let password_hash = hash_password(password_to_hash)
+        .map_err(|_| AppError::Internal)?;
+
     sqlx::query(
-        "INSERT INTO persons (id, name, gender, birthday, phone, email, type) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        "INSERT INTO persons (id, name, username, password_hash, gender, birthday, phone, email, type) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
     )
     .bind(person_id)
     .bind(&payload.name)
+    .bind(&username)
+    .bind(&password_hash)
     .bind(payload.gender as i16)
     .bind(birthday)
     .bind(&payload.phone)
@@ -587,9 +636,6 @@ async fn create_person(
             let student_no = payload.student_no.ok_or_else(|| {
                 AppError::InvalidInput("student_no is required for student".to_string())
             })?;
-            if student_no.trim().is_empty() {
-                return Err(AppError::InvalidInput("student_no cannot be empty".to_string()));
-            }
             sqlx::query(
                 "INSERT INTO students (person_id, student_no, class_id, enrollment_date, status)
                  VALUES ($1, $2, $3, $4, 'enrolled')",
@@ -605,9 +651,6 @@ async fn create_person(
             let employee_no = payload.employee_no.ok_or_else(|| {
                 AppError::InvalidInput("employee_no is required for teacher".to_string())
             })?;
-            if employee_no.trim().is_empty() {
-                return Err(AppError::InvalidInput("employee_no cannot be empty".to_string()));
-            }
             sqlx::query(
                 "INSERT INTO teachers (person_id, employee_no, department_id, title, hire_date)
                  VALUES ($1, $2, $3, $4, $5)",
@@ -782,20 +825,45 @@ async fn update_person(
             .execute(&mut *tx)
             .await?;
     }
+    // 更新密码（如果提供了）
+    if let Some(password) = payload.password.as_ref() {
+        if !password.is_empty() {
+            let password_hash = hash_password(password)
+                .map_err(|_| AppError::Internal)?;
+            sqlx::query("UPDATE persons SET password_hash = $1 WHERE id = $2")
+                .bind(password_hash)
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+        }
+    }
 
     match person.type_.as_str() {
         "student" => {
             println!("Processing student updates...");
-            if payload.student_no.is_some() {
-                println!("Updating student_no to: {:?}", payload.student_no);
+            if let Some(student_no) = payload.student_no.as_ref() {
+                println!("Updating student_no to: {:?}", student_no);
+                // 同时更新students表和persons表的username
                 match sqlx::query("UPDATE students SET student_no = $1 WHERE person_id = $2")
-                    .bind(payload.student_no.as_ref().unwrap())
+                    .bind(student_no)
                     .bind(id)
                     .execute(&mut *tx)
                     .await {
                     Ok(result) => println!("Student_no update successful, rows affected: {}", result.rows_affected()),
                     Err(e) => {
                         println!("Student_no update failed: {:?}", e);
+                        return Err(AppError::Database(e));
+                    }
+                }
+                // 同步更新persons表的username
+                match sqlx::query("UPDATE persons SET username = $1 WHERE id = $2")
+                    .bind(student_no)
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await {
+                    Ok(result) => println!("Username update successful, rows affected: {}", result.rows_affected()),
+                    Err(e) => {
+                        println!("Username update failed: {:?}", e);
                         return Err(AppError::Database(e));
                     }
                 }
@@ -851,9 +919,16 @@ async fn update_person(
             }
         }
         "teacher" => {
-            if payload.employee_no.is_some() {
+            if let Some(employee_no) = payload.employee_no.as_ref() {
+                // 同时更新teachers表和persons表的username
                 sqlx::query("UPDATE teachers SET employee_no = $1 WHERE person_id = $2")
-                    .bind(payload.employee_no)
+                    .bind(employee_no)
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await?;
+                // 同步更新persons表的username
+                sqlx::query("UPDATE persons SET username = $1 WHERE id = $2")
+                    .bind(employee_no)
                     .bind(id)
                     .execute(&mut *tx)
                     .await?;
