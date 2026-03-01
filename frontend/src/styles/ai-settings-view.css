@@ -1,0 +1,43 @@
+.ai-settings-view {
+  padding: 20px;
+  min-height: 100%;
+  background-color: #f5f7fa;
+}
+
+.ai-settings-container {
+  max-width: 800px;
+  margin: 0 auto;
+  background-color: #fff;
+  padding: 30px;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+.ai-settings-container h2 {
+  margin-bottom: 30px;
+  color: #303133;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.settings-form {
+  margin-top: 20px;
+}
+
+.settings-form .el-form-item {
+  margin-bottom: 25px;
+}
+
+.settings-form .el-input,
+.settings-form .el-textarea {
+  width: 100%;
+}
+
+.settings-form .el-slider {
+  width: 100%;
+  margin-right: 20px;
+}
+
+.settings-form .el-button {
+  width: 150px;
+}

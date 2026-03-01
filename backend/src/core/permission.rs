@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs;
-use sqlx::{PgPool, postgres::PgRow, Row};
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +15,14 @@ pub enum PermissionResult {
     Allowed,
     Denied,
     NotSet,
+}
+
+/// 班级特定权限检查请求
+#[derive(Debug)]
+pub struct ClassPermissionCheck {
+    pub user_id: Uuid,
+    pub permission: String,
+    pub class_id: Uuid,
 }
 
 impl PermissionManager {
@@ -225,6 +233,33 @@ impl PermissionManager {
         
         Ok(allowed_permissions.into_iter().collect())
     }
+    
+    /// 获取用户拥有的班级特定权限映射（用于前端显示）
+    /// 返回 Map<权限前缀, Vec<班级后缀>>
+    pub async fn get_user_class_permissions(&self, user_id: Uuid) -> Result<std::collections::HashMap<String, Vec<String>>, sqlx::Error> {
+        let mut class_permissions: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        
+        // 从用户特定权限中查找班级特定权限
+        let user_perms = self.get_user_specific_permissions(user_id).await?;
+        
+        for node in user_perms {
+            if node.value && node.permission.contains("group.") {
+                // 解析权限格式: group.create.abc123
+                let parts: Vec<&str> = node.permission.split('.').collect();
+                if parts.len() >= 3 {
+                    let permission_prefix = parts[..parts.len()-1].join(".");
+                    let class_suffix = parts[parts.len()-1].to_string();
+                    
+                    class_permissions
+                        .entry(permission_prefix)
+                        .or_insert_with(Vec::new)
+                        .push(class_suffix);
+                }
+            }
+        }
+        
+        Ok(class_permissions)
+    }
 
     /// 检查权限，如果拒绝则返回AppError
     pub async fn require_permission(&self, user_id: Uuid, permission: &str) -> Result<(), crate::core::error::AppError> {
@@ -237,6 +272,99 @@ impl PermissionManager {
                 format!("权限未设置: {}", permission)
             )),
         }
+    }
+
+    /// 获取班级ID的后6位作为权限后缀
+    pub fn get_class_suffix(class_id: Uuid) -> String {
+        let id_str = class_id.to_string().replace("-", "");
+        id_str.chars().rev().take(6).collect::<String>().chars().rev().collect()
+    }
+
+    /// 检查用户是否拥有特定班级的权限
+    /// 权限格式: group.create.{class_suffix} 或 class.{class_suffix}（通用班级权限）
+    pub async fn check_class_permission(&self, user_id: Uuid, permission: &str, class_id: Uuid) -> PermissionResult {
+        let class_suffix = Self::get_class_suffix(class_id);
+        let class_permission = format!("{}.{}", permission, class_suffix);
+        
+        // 首先检查通用权限（如 group.create.* 或 group.*）
+        let general_result = self.check_permission(user_id, permission).await;
+        if general_result == PermissionResult::Allowed {
+            return PermissionResult::Allowed;
+        }
+        
+        // 检查班级通用权限（class.{class_suffix}），如果有则允许所有班级操作
+        let class_general_permission = format!("class.{}", class_suffix);
+        let class_general_result = self.check_permission(user_id, &class_general_permission).await;
+        if class_general_result == PermissionResult::Allowed {
+            return PermissionResult::Allowed;
+        }
+        
+        // 然后检查班级特定权限（如 group.create.abc123）
+        let class_result = self.check_permission(user_id, &class_permission).await;
+        if class_result == PermissionResult::Allowed {
+            return PermissionResult::Allowed;
+        }
+        
+        // 如果都没有允许，返回Denied
+        PermissionResult::Denied
+    }
+
+    /// 检查班级权限，如果拒绝则返回AppError
+    pub async fn require_class_permission(&self, user_id: Uuid, permission: &str, class_id: Uuid) -> Result<(), crate::core::error::AppError> {
+        match self.check_class_permission(user_id, permission, class_id).await {
+            PermissionResult::Allowed => Ok(()),
+            PermissionResult::Denied => Err(crate::core::error::AppError::Auth(
+                format!("没有权限执行此操作: {} (班级ID: {})", permission, class_id)
+            )),
+            PermissionResult::NotSet => Err(crate::core::error::AppError::Auth(
+                format!("权限未设置: {} (班级ID: {})", permission, class_id)
+            )),
+        }
+    }
+
+    /// 为用户添加班级特定权限
+    pub async fn add_class_permissions_for_teacher(&self, teacher_id: Uuid, class_id: Uuid) -> Result<(), sqlx::Error> {
+        let class_suffix = Self::get_class_suffix(class_id);
+        let priority = 20; // 高于角色模板的优先级(15)
+        
+        // 为该班级添加所有小组管理权限
+        let permissions = vec![
+            format!("class.{}", class_suffix), // 班级通用管理权限
+            format!("group.view.{}", class_suffix),
+            format!("group.create.{}", class_suffix),
+            format!("group.update.{}", class_suffix),
+            format!("group.delete.{}", class_suffix),
+            format!("group.update.member.{}", class_suffix),
+            format!("group.update.score.{}", class_suffix),
+        ];
+        
+        for permission in permissions {
+            self.add_user_permission(teacher_id, &permission, true, priority).await?;
+        }
+        
+        Ok(())
+    }
+
+    /// 移除用户的班级特定权限
+    pub async fn remove_class_permissions_for_teacher(&self, teacher_id: Uuid, class_id: Uuid) -> Result<(), sqlx::Error> {
+        let class_suffix = Self::get_class_suffix(class_id);
+        
+        // 移除该班级的所有小组管理权限
+        let permissions = vec![
+            format!("class.{}", class_suffix), // 班级通用管理权限
+            format!("group.view.{}", class_suffix),
+            format!("group.create.{}", class_suffix),
+            format!("group.update.{}", class_suffix),
+            format!("group.delete.{}", class_suffix),
+            format!("group.update.member.{}", class_suffix),
+            format!("group.update.score.{}", class_suffix),
+        ];
+        
+        for permission in permissions {
+            self.remove_user_permission(teacher_id, &permission).await?;
+        }
+        
+        Ok(())
     }
 }
 

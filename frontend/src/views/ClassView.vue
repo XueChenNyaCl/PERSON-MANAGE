@@ -104,7 +104,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
-import { classApi, type ClassResponse, type ClassCreate, type ClassUpdate, type ClassQuery } from '../api/class'
+import { classApi, type ClassResponse, type ClassCreate, type ClassQuery } from '../api/class'
 import { personApi, type PersonResponse } from '../api/person'
 
 const loading = ref(false)

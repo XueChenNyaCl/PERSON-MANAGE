@@ -69,7 +69,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
-import { departmentApi, type DepartmentResponse, type DepartmentCreate, type DepartmentUpdate, type DepartmentQuery } from '../api/department'
+import { departmentApi, type DepartmentResponse, type DepartmentCreate, type DepartmentQuery } from '../api/department'
 
 const loading = ref(false)
 const submitting = ref(false)

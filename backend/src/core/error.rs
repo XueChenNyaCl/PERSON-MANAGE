@@ -14,6 +14,9 @@ pub enum AppError {
     #[error("Internal server error")]
     Internal,
 
+    #[error("Internal server error: {0}")]
+    InternalWithMessage(String),
+
     #[error("Not found")]
     NotFound,
 }
@@ -32,6 +35,10 @@ impl axum::response::IntoResponse for AppError {
             AppError::Internal => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Internal server error".to_string(),
+            ),
+            AppError::InternalWithMessage(msg) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                msg,
             ),
             AppError::NotFound => (StatusCode::NOT_FOUND, "Resource not found".to_string()),
         };

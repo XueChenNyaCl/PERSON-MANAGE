@@ -66,6 +66,16 @@ export const menuItems: MenuItem[] = [
     parentId: 'score-management'
   },
   
+  // 小组管理
+  {
+    id: 'group',
+    title: '小组管理',
+    icon: 'UserFilled',
+    path: '/dashboard/group',
+    requiredPermission: 'group.view',
+    parentId: 'group-management'
+  },
+  
   // 通知公告
   {
     id: 'notice',
@@ -74,6 +84,24 @@ export const menuItems: MenuItem[] = [
     path: '/dashboard/notice',
     requiredPermission: 'notice.view',
     parentId: 'notice-management'
+  },
+  
+  // AI 助手
+  {
+    id: 'ai',
+    title: 'AI 对话',
+    icon: 'ChatLineRound',
+    path: '/dashboard/ai',
+    requiredPermission: 'ai.view',
+    parentId: 'ai-management'
+  },
+  {
+    id: 'ai-settings',
+    title: 'AI 设置',
+    icon: 'Setting',
+    path: '/dashboard/ai/settings',
+    requiredPermission: 'ai.settings',
+    parentId: 'ai-management'
   },
   
   // 系统设置（仅管理员）
@@ -110,8 +138,16 @@ export const menuGroups = [
     title: '评分管理'
   },
   {
+    id: 'group-management',
+    title: '小组管理'
+  },
+  {
     id: 'notice-management',
     title: '通知公告'
+  },
+  {
+    id: 'ai-management',
+    title: 'AI 助手'
   },
   {
     id: 'system-settings',

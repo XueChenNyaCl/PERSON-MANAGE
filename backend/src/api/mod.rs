@@ -1,8 +1,13 @@
+pub mod ai;
+pub mod ai_actions;
+pub mod ai_data;
+pub mod ai_enhanced;
 pub mod attendance;
 pub mod auth;
 pub mod class;
 pub mod debug;
 pub mod department;
+pub mod group;
 pub mod notice;
 pub mod permission;
 pub mod person;

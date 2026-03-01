@@ -1,9 +1,15 @@
 import axios from 'axios'
+import { aiApi } from './ai'
 
 const api = axios.create({
   baseURL: '/api',
   timeout: 10000,
 })
+
+// 导出所有 API 模块
+export const apiModules = {
+  ai: aiApi
+}
 
 // 请求拦截器：添加JWT令牌
 api.interceptors.request.use(

@@ -37,6 +37,12 @@ anyhow = "^1.0.75"
 thiserror = "^1.0.48"
 serde_yaml = "^0.9.25"
 
+# HTTP客户端
+reqwest = { version = "^0.12.0", features = ["json", "stream"] }
+
+# 正则表达式
+regex = "^1.10.0"
+
 # 插件系统
 dyn-clone = "^1.0.16"
 
@@ -59,9 +65,25 @@ name = "simple_migration"
 path = "simple_migration.rs"
 
 [[bin]]
+name = "check_teacher_permissions"
+path = "check_teacher_permissions.rs"
+
+[[bin]]
+name = "fix_teacher_permissions"
+path = "fix_teacher_permissions.rs"
+
+[[bin]]
 name = "run_login_migration"
 path = "run_login_migration.rs"
 
 [[bin]]
 name = "run_permission_migration"
 path = "run_permission_migration.rs"
+
+[[bin]]
+name = "run_all_migrations"
+path = "run_all_migrations.rs"
+
+[[bin]]
+name = "run_ai_permission_migration"
+path = "run_ai_permission_migration.rs"

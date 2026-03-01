@@ -5,6 +5,7 @@ use axum::{
     Extension,
 };
 use serde::{Deserialize, Serialize};
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::api::routes::AppState;
@@ -1035,6 +1036,36 @@ async fn update_person(
         Err(e) => {
             println!("Failed to commit transaction: {:?}", e);
             return Err(AppError::Database(e));
+        }
+    }
+
+    // 同步班主任权限
+    if person.type_ == "teacher" {
+        println!("Syncing teacher class permissions...");
+        let permission_manager = PermissionManager::new(pool.clone());
+        // 查询老师当前的班级关联
+        match sqlx::query("SELECT class_id, is_main_teacher FROM teacher_class WHERE teacher_id = $1")
+            .bind(id)
+            .fetch_all(pool)
+            .await {
+            Ok(rows) => {
+                for row in rows {
+                    let class_id: Uuid = row.get("class_id");
+                    let is_main_teacher: bool = row.get("is_main_teacher");
+                    if is_main_teacher {
+                        match permission_manager.add_class_permissions_for_teacher(id, class_id).await {
+                            Ok(_) => println!("Added class permissions for class {} (teacher {})", class_id, id),
+                            Err(e) => println!("Failed to add class permissions: {}", e),
+                        }
+                    } else {
+                        match permission_manager.remove_class_permissions_for_teacher(id, class_id).await {
+                            Ok(_) => println!("Removed class permissions for class {} (teacher {})", class_id, id),
+                            Err(e) => println!("Failed to remove class permissions: {}", e),
+                        }
+                    }
+                }
+            },
+            Err(e) => println!("Failed to fetch teacher classes for permission sync: {}", e),
         }
     }
 

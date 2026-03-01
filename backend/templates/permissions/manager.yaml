@@ -1,0 +1,42 @@
+# 管理权限模板
+# 优先级: 10 (默认)
+# 描述: 公告管理、考勤管理、AI设置权限，用于合并权限
+
+permissions:
+  # ========== 公告管理权限 ==========
+  - permission: notice.view
+    priority: 10
+  - permission: notice.create
+    priority: 10
+  - permission: notice.update
+    priority: 10
+  - permission: notice.delete
+    priority: 10
+  
+  # ========== 考勤管理权限 ==========
+  - permission: attendance.view
+    priority: 10
+  - permission: attendance.create
+    priority: 10
+  - permission: attendance.update
+    priority: 10
+  - permission: attendance.delete
+    priority: 10
+  
+  # ========== AI 设置权限 ==========
+  - permission: ai.view
+    priority: 10
+  - permission: ai.chat
+    priority: 10
+  - permission: ai.analyze
+    priority: 10
+  - permission: ai.settings
+    priority: 10
+  
+  # ========== 通配符权限（限本模板范围） ==========
+  - permission: "notice.*"
+    priority: 5
+  - permission: "attendance.*"
+    priority: 5
+  - permission: "ai.*"
+    priority: 5

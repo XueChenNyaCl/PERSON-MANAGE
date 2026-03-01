@@ -347,7 +347,7 @@ import {
   House, User, UserFilled, Timer, GoodsFilled, Message, Bell, Setting, 
   Suitcase, OfficeBuilding, DataAnalysis, Operation, Money, TrendCharts, 
   Collection, Top, Reading, Star, Check, Flag, Edit, Calendar, 
-  Tickets, Trophy, Lock, Grid, Document, Ticket 
+  Tickets, Trophy, Lock, Grid, Document, Ticket, ChatLineRound 
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '../store/auth'
 import { menuItems, menuGroups } from '../config/menu'
@@ -386,7 +386,8 @@ const iconComponents = {
   Lock,
   Grid,
   Document,
-  Ticket
+  Ticket,
+  ChatLineRound
 }
 
 const router = useRouter()

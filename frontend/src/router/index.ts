@@ -66,6 +66,26 @@ const router = createRouter({
           path: 'system/permission',
           name: 'system-permission',
           component: () => import('../views/SystemPermissionView.vue')
+        },
+        {
+          path: 'group',
+          name: 'group',
+          component: () => import('../views/GroupManageView.vue')
+        },
+        {
+          path: 'group/:id',
+          name: 'group-detail',
+          component: () => import('../views/GroupDetailView.vue')
+        },
+        {
+          path: 'ai',
+          name: 'ai',
+          component: () => import('../views/AIView.vue')
+        },
+        {
+          path: 'ai/settings',
+          name: 'ai-settings',
+          component: () => import('../views/AISettingsView.vue')
         }
       ]
     },
@@ -97,12 +117,20 @@ const router = createRouter({
     {
       path: '/system/permission',
       redirect: '/dashboard/system/permission'
+    },
+    {
+      path: '/group',
+      redirect: '/dashboard/group'
+    },
+    {
+      path: '/ai',
+      redirect: '/dashboard/ai'
     }
   ]
 })
 
 // 路由守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, _from, next) => {
   const authStore = useAuthStore()
   
   // 检查是否需要认证

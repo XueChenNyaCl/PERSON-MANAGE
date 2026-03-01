@@ -63,7 +63,7 @@ const handleLogin = async () => {
     })
     
     // 保存令牌和用户信息到store和localStorage
-    authStore.setAuth(response.data.token, response.data.user, response.data.permissions)
+    authStore.setAuth(response.data.token, response.data.user, response.data.permissions, response.data.class_permissions)
     
     ElMessage.success('登录成功')
     router.push('/dashboard')

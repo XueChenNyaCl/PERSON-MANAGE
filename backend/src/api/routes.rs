@@ -1,7 +1,7 @@
 use axum::{extract::State, Json, middleware, routing::delete, routing::get, routing::post, routing::put, Router};
 use sqlx::PgPool;
 
-use crate::api::{attendance, auth, class, department, debug, notice, permission, person, score};
+use crate::api::{ai, ai_actions, ai_data, ai_enhanced, attendance, auth, class, department, debug, group, notice, permission, person, score};
 use crate::core::middleware::auth_middleware;
 use crate::core::plugin::PluginManager;
 
@@ -40,10 +40,16 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
         .route("/api/classes/:id/teachers", get(class::get_class_teachers))
         .route("/api/departments", get(department::list))
         .route("/api/departments/:id", get(department::get))
-        .route("/api/attendance", get(attendance::list))
-        .route("/api/score", get(score::list))
-        .route("/api/notice", get(notice::list))
+        .route("/api/attendances", get(attendance::list))
+        .route("/api/scores", get(score::list))
+        .route("/api/notices", get(notice::list))
         .route("/api/permission/teacher/classes", get(person::get_teacher_classes))
+        // 小组管理路由（公开查看）
+        .route("/api/groups", get(group::list_all))
+        .route("/api/groups/class/:class_id", get(group::list))
+        .route("/api/groups/:id", get(group::get))
+        .route("/api/groups/:id/members", get(group::get_members))
+        .route("/api/groups/:id/score-records", get(group::get_score_records))
         // WebSocket路由
         .route("/ws", get(crate::ws::handler::ws_handler));
 
@@ -58,9 +64,18 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
         .route("/api/departments", post(department::create))
         .route("/api/departments/:id", put(department::update))
         .route("/api/departments/:id", delete(department::delete))
-        .route("/api/attendance", post(attendance::create))
-        .route("/api/score", post(score::create))
-        .route("/api/notice", post(notice::create))
+        .route("/api/attendances", post(attendance::create))
+        .route("/api/attendances/:id", get(attendance::get))
+        .route("/api/attendances/:id", put(attendance::update))
+        .route("/api/attendances/:id", delete(attendance::delete))
+        .route("/api/scores", post(score::create))
+        .route("/api/scores/:id", get(score::get))
+        .route("/api/scores/:id", put(score::update))
+        .route("/api/scores/:id", delete(score::delete))
+        .route("/api/notices", post(notice::create))
+        .route("/api/notices/:id", get(notice::get))
+        .route("/api/notices/:id", put(notice::update))
+        .route("/api/notices/:id", delete(notice::delete))
         // 权限管理路由
         .route("/api/permissions", get(permission::list_role_permissions))
         .route("/api/permissions", post(permission::add_role_permission))
@@ -73,6 +88,26 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
         .route("/api/permissions/translations", post(permission::get_permission_translations))
         .route("/api/permissions/keys", get(permission::get_all_permission_keys))
         .route("/api/permissions/apply-yaml", post(permission::apply_yaml_template))
+        // 小组管理路由（需要认证）
+        .route("/api/groups", post(group::create))
+        .route("/api/groups/:id", put(group::update))
+        .route("/api/groups/:id", delete(group::delete))
+        .route("/api/groups/:id/members", post(group::add_member))
+        .route("/api/groups/:id/members/:person_id", delete(group::remove_member))
+        .route("/api/groups/:id/score", post(group::update_score))
+        // AI 相关路由
+        .route("/api/ai/chat", post(ai::chat))
+        .route("/api/ai/identities", get(ai::list_identities))
+        .route("/api/ai/identities", post(ai::create_identity))
+        .route("/api/ai/identities/:id", put(ai::update_identity))
+        .route("/api/ai/identities/:id", delete(ai::delete_identity))
+        .route("/api/ai/settings", get(ai::get_settings))
+        .route("/api/ai/settings", put(ai::update_settings))
+        .route("/api/ai/context-data", get(ai::get_context_data))
+        .route("/api/ai/query", post(ai_data::query_data))
+        .route("/api/ai/enhanced-chat", post(ai_enhanced::enhanced_chat))
+        .route("/api/ai/actions", post(ai_actions::execute_action))
+        .route("/api/ai/actions/available", get(ai_actions::get_available_actions))
         .layer(middleware::from_fn(auth_middleware));
 
     // 合并路由

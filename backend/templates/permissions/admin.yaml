@@ -115,6 +115,34 @@ permissions:
   - permission: dashboard.view
     priority: 10
   
+  # ========== 小组管理权限 ==========
+  # 查看权限
+  - permission: group.view
+    priority: 10
+  # 创建权限
+  - permission: group.create
+    priority: 10
+  # 更新权限
+  - permission: group.update
+    priority: 10
+  - permission: group.update.member
+    priority: 10
+  - permission: group.update.score
+    priority: 10
+  # 删除权限
+  - permission: group.delete
+    priority: 10
+  
+  # ========== AI 助手权限 ==========
+  - permission: ai.view
+    priority: 10
+  - permission: ai.chat
+    priority: 10
+  - permission: ai.analyze
+    priority: 10
+  - permission: ai.settings
+    priority: 10
+  
   # ========== 通配符权限（覆盖所有操作） ==========
   - permission: "person.*"
     priority: 5
@@ -127,4 +155,8 @@ permissions:
   - permission: "score.*"
     priority: 5
   - permission: "notice.*"
+    priority: 5
+  - permission: "group.*"
+    priority: 5
+  - permission: "ai.*"
     priority: 5

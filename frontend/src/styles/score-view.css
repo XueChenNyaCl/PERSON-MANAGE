@@ -1,0 +1,23 @@
+.score-container {
+  padding: 20px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.search-form {
+  margin-bottom: 20px;
+}
+
+.score-positive {
+  color: #67c23a;
+  font-weight: bold;
+}
+
+.score-negative {
+  color: #f56c6c;
+  font-weight: bold;
+}

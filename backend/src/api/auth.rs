@@ -31,6 +31,7 @@ pub struct LoginResponse {
     pub token: String,
     pub user: UserInfo,
     pub permissions: Vec<String>, // 用户权限列表
+    pub class_permissions: std::collections::HashMap<String, Vec<String>>, // 班级特定权限
     pub expires_in: u64,          // 令牌过期时间（秒）
 }
 
@@ -156,7 +157,98 @@ pub async fn login(
         }
     };
     
-    // 8. 构建响应
+    // 7.5 检查并修复班主任权限（如果用户是老师）
+    if user.role == "teacher" {
+        println!("用户是老师，检查班主任权限...");
+        
+        // 查询用户是否是班主任（通过classes表的teacher_id字段）
+        let teacher_classes: Vec<(Uuid, String)> = sqlx::query!(
+            "SELECT id, name FROM classes WHERE teacher_id = $1",
+            user.id
+        )
+        .fetch_all(pool)
+        .await
+        .map(|rows| {
+            rows.into_iter()
+                .map(|row| (row.id, row.name))
+                .collect()
+        })
+        .unwrap_or_else(|e| {
+            println!("查询班主任班级失败: {}", e);
+            Vec::new()
+        });
+        
+        // 同时查询teacher_class表中标记为班主任的班级
+        let teacher_class_classes: Vec<(Uuid, String)> = sqlx::query!(
+            "SELECT c.id, c.name 
+             FROM teacher_class tc 
+             JOIN classes c ON tc.class_id = c.id 
+             WHERE tc.teacher_id = $1 AND tc.is_main_teacher = true",
+            user.id
+        )
+        .fetch_all(pool)
+        .await
+        .map(|rows| {
+            rows.into_iter()
+                .map(|row| (row.id, row.name))
+                .collect()
+        })
+        .unwrap_or_else(|e| {
+            println!("查询teacher_class班主任班级失败: {}", e);
+            Vec::new()
+        });
+        
+        // 合并两个来源的班级，去重
+        use std::collections::HashSet;
+        let mut all_classes = HashSet::new();
+        for (class_id, class_name) in teacher_classes.into_iter().chain(teacher_class_classes) {
+            all_classes.insert((class_id, class_name));
+        }
+        
+        println!("老师是 {} 个班级的班主任", all_classes.len());
+        
+        // 为每个班主任班级检查并添加权限
+        let permission_manager = permission::PermissionManager::new(pool.clone());
+        for (class_id, class_name) in all_classes {
+            println!("检查班级 {} ({}) 的权限...", class_name, class_id);
+            
+            // 检查是否已有班级特定权限（检查任意一个group权限即可）
+            let has_perm = sqlx::query_scalar!(
+                "SELECT COUNT(*) FROM user_permissions 
+                 WHERE user_id = $1 AND permission LIKE $2",
+                user.id,
+                format!("group.%.{}", permission::PermissionManager::get_class_suffix(class_id))
+            )
+            .fetch_one(pool)
+            .await
+            .map(|opt: Option<i64>| opt.unwrap_or(0) > 0)
+            .unwrap_or(false);
+            
+            if !has_perm {
+                println!("班级 {} 缺少权限，正在添加...", class_name);
+                match permission_manager.add_class_permissions_for_teacher(user.id, class_id).await {
+                    Ok(_) => println!("成功为班级 {} 添加权限", class_name),
+                    Err(e) => println!("为班级 {} 添加权限失败: {}", class_name, e),
+                }
+            } else {
+                println!("班级 {} 已有权限", class_name);
+            }
+        }
+    }
+    
+    // 8. 获取用户班级特定权限
+    let class_permissions = {
+        let manager = permission::PermissionManager::new(pool.clone());
+        match manager.get_user_class_permissions(user.id).await {
+            Ok(perms) => perms,
+            Err(e) => {
+                println!("获取班级特定权限失败: {}, 使用空权限列表", e);
+                std::collections::HashMap::new()
+            }
+        }
+    };
+    
+    // 9. 构建响应
     let response = LoginResponse {
         token,
         user: UserInfo {
@@ -167,6 +259,7 @@ pub async fn login(
             email: user.email.unwrap_or_default(),
         },
         permissions: user_permissions,
+        class_permissions,
         expires_in: expires_in_hours * 3600,
     };
     

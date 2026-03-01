@@ -10,6 +10,7 @@ export interface LoginResponse {
   token: string
   user: UserInfo
   permissions: string[]
+  class_permissions: Record<string, string[]>
   expires_in: number
 }
 

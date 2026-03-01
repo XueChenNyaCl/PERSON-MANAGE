@@ -193,10 +193,20 @@
                 v-model="yamlApplyTarget"
                 :placeholder="$t('yaml_import.apply_to_role')"
                 style="width: 200px; margin-right: 12px"
+                @change="handleTargetChange"
               >
                 <el-option label="应用到选中用户" value="user" />
                 <el-option label="应用到角色" value="role" />
                 <el-option label="应用到所有用户" value="all" />
+              </el-select>
+              
+              <el-select
+                v-if="yamlApplyTarget === 'role'"
+                v-model="selectedRole"
+                :placeholder="$t('yaml_import.select_role')"
+                style="width: 200px; margin-right: 12px"
+              >
+                <el-option v-for="role in availableRoles" :key="role.value" :label="role.label" :value="role.value" />
               </el-select>
               
               <el-select
@@ -210,7 +220,7 @@
               
               <el-button
                 type="primary"
-                :disabled="!yamlContent || !yamlApplyTarget"
+                :disabled="!yamlContent || !yamlApplyTarget || (yamlApplyTarget === 'role' && !selectedRole)"
                 @click="applyYamlTemplate"
               >
                 {{ $t('yaml_import.apply_to_user') }}
@@ -218,42 +228,7 @@
             </div>
           </div>
 
-          <!-- 批量权限操作 -->
-          <div class="bulk-permission-section">
-            <h4>{{ $t('permission.bulk_update') }}</h4>
-            
-            <div class="bulk-inputs">
-              <el-input
-                v-model="bulkPermissionKey"
-                :placeholder="$t('permission.permission_key')"
-                style="margin-bottom: 12px"
-              />
-              <el-input-number
-                v-model="bulkPermissionPriority"
-                :min="1"
-                :max="100"
-                :placeholder="$t('permission.priority')"
-                style="width: 100%; margin-bottom: 12px"
-              />
-            </div>
-            
-            <div class="bulk-actions">
-              <el-button
-                type="primary"
-                :disabled="!selectedUser || !bulkPermissionKey"
-                @click="addBulkPermission"
-              >
-                {{ $t('permission.add_permission') }}
-              </el-button>
-              <el-button
-                type="danger"
-                :disabled="!selectedUser || !bulkPermissionKey"
-                @click="removeBulkPermission"
-              >
-                {{ $t('permission.remove_permission') }}
-              </el-button>
-            </div>
-          </div>
+
         </div>
       </div>
     </div>
@@ -345,18 +320,25 @@ const userSearch = ref('')
 const permissionSearch = ref('')
 const newPermissionKey = ref('')
 const newPermissionPriority = ref(10)
-const bulkPermissionKey = ref('')
-const bulkPermissionPriority = ref(10)
 const yamlContent = ref('')
 const yamlApplyTarget = ref('user')
 const yamlMergeStrategy = ref('merge')
 const showYamlImportDialog = ref(false)
+const selectedRole = ref('')
 
 // 数据
 const users = ref<PersonResponse[]>([])
 const selectedUser = ref<PersonResponse | null>(null)
 const selectedPermission = ref<Permission | null>(null)
 const userPermissions = ref<Permission[]>([])
+
+// 可用角色列表
+const availableRoles = ref([
+  { value: 'teacher', label: '教师' },
+  { value: 'student', label: '学生' },
+  { value: 'parent', label: '家长' },
+  { value: 'admin', label: '管理员' }
+])
 
 // 计算属性
 const filteredUsers = computed(() => {
@@ -495,6 +477,12 @@ const handleYamlFileChange = (file: any) => {
   reader.readAsText(file.raw)
 }
 
+const handleTargetChange = (value: string) => {
+  if (value !== 'role') {
+    selectedRole.value = ''
+  }
+}
+
 const applyYamlTemplate = async () => {
   if (!yamlContent.value) return
   
@@ -506,9 +494,9 @@ const applyYamlTemplate = async () => {
     if (yamlApplyTarget.value === 'user' && selectedUser.value) {
       targetType = 'user'
       targetIds = [selectedUser.value.id]
-    } else if (yamlApplyTarget.value === 'role' && selectedUser.value) {
+    } else if (yamlApplyTarget.value === 'role') {
       targetType = 'role'
-      role = selectedUser.value.type
+      role = selectedRole.value
     } else if (yamlApplyTarget.value === 'all') {
       targetType = 'all'
     }
@@ -550,6 +538,7 @@ const applyYamlTemplate = async () => {
     
     showYamlImportDialog.value = false
     yamlContent.value = ''
+    selectedRole.value = ''
     
     if (selectedUser.value) {
       await loadUserPermissions(selectedUser.value.id)
@@ -560,43 +549,7 @@ const applyYamlTemplate = async () => {
   }
 }
 
-const addBulkPermission = async () => {
-  if (!selectedUser.value || !bulkPermissionKey.value) return
-  
-  try {
-    await permissionApi.addUserPermission(
-      selectedUser.value.id,
-      bulkPermissionKey.value,
-      bulkPermissionPriority.value
-    )
-    
-    ElMessage.success('批量权限添加成功')
-    await loadUserPermissions(selectedUser.value.id)
-    bulkPermissionKey.value = ''
-    bulkPermissionPriority.value = 10
-  } catch (error) {
-    console.error('批量添加权限失败:', error)
-    ElMessage.error('批量添加权限失败')
-  }
-}
 
-const removeBulkPermission = async () => {
-  if (!selectedUser.value || !bulkPermissionKey.value) return
-  
-  try {
-    await permissionApi.removeUserPermission(
-      selectedUser.value.id,
-      bulkPermissionKey.value
-    )
-    
-    ElMessage.success('批量权限移除成功')
-    await loadUserPermissions(selectedUser.value.id)
-    bulkPermissionKey.value = ''
-  } catch (error) {
-    console.error('批量移除权限失败:', error)
-    ElMessage.error('批量移除权限失败')
-  }
-}
 
 const clearUserSearch = () => {
   userSearch.value = ''

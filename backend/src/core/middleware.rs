@@ -1,7 +1,7 @@
 use axum::{extract::Request, middleware::Next, response::Response, http::StatusCode};
 use axum_extra::{TypedHeader, headers::{authorization::Bearer, Authorization}};
 
-use crate::core::auth::{verify_token, Claims};
+use crate::core::auth::{verify_token};
 use crate::core::config::load_config;
 
 pub async fn auth_middleware(

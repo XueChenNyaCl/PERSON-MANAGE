@@ -87,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { classApi, type ClassResponse } from '../api/class'
 import { personApi, type PersonResponse } from '../api/person'

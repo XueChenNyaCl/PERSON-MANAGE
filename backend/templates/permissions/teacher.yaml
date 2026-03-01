@@ -99,6 +99,30 @@ permissions:
   - permission: dashboard.view
     priority: 10
   
+  # ========== 小组管理权限 ==========
+  # 教师可以查看小组
+  - permission: group.view
+    priority: 10
+  # 否定权限：非班主任不能创建/修改/删除小组
+  - permission: -group.create
+    priority: 15
+  - permission: -group.update
+    priority: 15
+  - permission: -group.delete
+    priority: 15
+  - permission: -group.update.member
+    priority: 15
+  - permission: -group.update.score
+    priority: 15
+  
+  # ========== AI 助手权限 ==========
+  - permission: ai.view
+    priority: 10
+  - permission: ai.chat
+    priority: 10
+  - permission: ai.analyze
+    priority: 10
+  
   # ========== 通配符权限（仅限管理的模块） ==========
   - permission: "attendance.*"
     priority: 5

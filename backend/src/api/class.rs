@@ -352,7 +352,7 @@ async fn create_class(
     .execute(&mut *tx)
     .await?;
 
-    // 如果设置了班主任，同步到teacher_class表
+    // 如果设置了班主任，同步到teacher_class表并植入权限
     if let Some(teacher_id) = teacher_id {
         // 插入teacher_class记录，设置is_main_teacher=true
         sqlx::query(
@@ -375,6 +375,11 @@ async fn create_class(
         .bind(teacher_id)
         .execute(&mut *tx)
         .await?;
+        
+        // 为新班主任植入班级特定权限
+        let permission_manager = PermissionManager::new(pool.clone());
+        permission_manager.add_class_permissions_for_teacher(teacher_id, id).await
+            .map_err(|e| AppError::InternalWithMessage(format!("植入权限失败: {}", e)))?;
     }
 
     tx.commit().await?;
@@ -388,7 +393,8 @@ async fn update_class(
 ) -> Result<ClassResponse, AppError> {
     let mut tx = pool.begin().await?;
     
-    let _class = sqlx::query_as::<_, Class>("SELECT * FROM classes WHERE id = $1")
+    // 获取原班级信息（用于处理班主任变更）
+    let old_class = sqlx::query_as::<_, Class>("SELECT * FROM classes WHERE id = $1")
         .bind(id)
         .fetch_optional(&mut *tx)
         .await?
@@ -410,19 +416,22 @@ async fn update_class(
             .execute(&mut *tx)
             .await?;
     }
+    
+    // 处理班主任变更
     if payload.teacher_id.is_some() {
         // Convert string teacher_id to Uuid if provided
-        let teacher_id = payload.teacher_id.as_ref().and_then(|id_str| Uuid::parse_str(id_str).ok());
+        let new_teacher_id = payload.teacher_id.as_ref().and_then(|id_str| Uuid::parse_str(id_str).ok());
+        let old_teacher_id = old_class.teacher_id;
         
         // 更新classes表的teacher_id
         sqlx::query("UPDATE classes SET teacher_id = $1 WHERE id = $2")
-            .bind(teacher_id)
+            .bind(new_teacher_id)
             .bind(id)
             .execute(&mut *tx)
             .await?;
             
-        // 同步到teacher_class表
-        if let Some(teacher_id) = teacher_id {
+        // 同步到teacher_class表并处理权限
+        if let Some(new_teacher_id) = new_teacher_id {
             // 插入或更新teacher_class记录，设置is_main_teacher=true
             sqlx::query(
                 "INSERT INTO teacher_class (teacher_id, class_id, is_main_teacher)
@@ -430,7 +439,7 @@ async fn update_class(
                  ON CONFLICT (teacher_id, class_id) 
                  DO UPDATE SET is_main_teacher = true",
             )
-            .bind(teacher_id)
+            .bind(new_teacher_id)
             .bind(id)
             .execute(&mut *tx)
             .await?;
@@ -441,9 +450,24 @@ async fn update_class(
                  WHERE class_id = $1 AND teacher_id != $2",
             )
             .bind(id)
-            .bind(teacher_id)
+            .bind(new_teacher_id)
             .execute(&mut *tx)
             .await?;
+            
+            // 如果新班主任和旧班主任不同，处理权限变更
+            if Some(new_teacher_id) != old_teacher_id {
+                let permission_manager = PermissionManager::new(pool.clone());
+                
+                // 为新班主任植入权限
+                permission_manager.add_class_permissions_for_teacher(new_teacher_id, id).await
+                    .map_err(|e| AppError::InternalWithMessage(format!("植入新班主任权限失败: {}", e)))?;
+                
+                // 如果存在旧班主任，移除其权限
+                if let Some(old_teacher_id) = old_teacher_id {
+                    permission_manager.remove_class_permissions_for_teacher(old_teacher_id, id).await
+                        .map_err(|e| AppError::InternalWithMessage(format!("移除旧班主任权限失败: {}", e)))?;
+                }
+            }
         } else {
             // 如果teacher_id被设置为空，清除该班级的所有班主任标志
             sqlx::query(
@@ -453,6 +477,13 @@ async fn update_class(
             .bind(id)
             .execute(&mut *tx)
             .await?;
+            
+            // 移除旧班主任的权限
+            if let Some(old_teacher_id) = old_teacher_id {
+                let permission_manager = PermissionManager::new(pool.clone());
+                permission_manager.remove_class_permissions_for_teacher(old_teacher_id, id).await
+                    .map_err(|e| AppError::InternalWithMessage(format!("移除旧班主任权限失败: {}", e)))?;
+            }
         }
     }
     if let Some(academic_year) = payload.academic_year {

@@ -154,7 +154,7 @@
                     size="small" 
                     circle 
                     @click="removeClass(index)"
-                    :disabled="form.classes.length <= 1"
+                    :disabled="(form.classes || []).length <= 1"
                   >
                     <el-icon><Delete /></el-icon>
                   </el-button>
@@ -199,7 +199,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import { Delete, Plus } from '@element-plus/icons-vue'
-import { personApi, type PersonResponse, type PersonCreate, type PersonUpdate, type PersonQuery, type TeacherClassResponse } from '../api/person'
+import { personApi, type PersonResponse, type PersonCreate, type PersonQuery, type TeacherClassResponse } from '../api/person'
 import { classApi } from '../api/class'
 import { departmentApi } from '../api/department'
 import { useAuthStore } from '../store/auth'
@@ -271,7 +271,7 @@ const rules = reactive({
   ],
   employee_no: [
     {
-      validator: (rule, value, callback) => {
+      validator: (_rule: any, value: string, callback: any) => {
         if (form.type_ === 'teacher') {
           if (!value || value.trim() === '') {
             callback(new Error('请输入工号'))
@@ -464,7 +464,7 @@ const handleEdit = async (row: PersonResponse) => {
   if (row.type === 'teacher') {
     try {
       const teacherClasses = await personApi.getTeacherClasses(row.id)
-      form.classes = teacherClasses.map((item: TeacherClassResponse) => ({
+      form.classes = teacherClasses.data.map((item: TeacherClassResponse) => ({
         class_id: item.id,
         is_main_teacher: item.is_main_teacher || false
       }))
@@ -574,12 +574,21 @@ const handleSubmit = async () => {
           // 如果classes数组为空，设置为undefined
           if (cleaned.classes.length === 0) {
             cleaned.classes = undefined
+          } else {
+            // 如果用户标记了班主任，设置所有关联班级的班主任标志
+            if (data.is_main_teacher === true) {
+              cleaned.classes.forEach((cls: any) => {
+                cls.is_main_teacher = true
+              })
+            }
           }
         }
       } else {
         // 学生或其他类型使用class_id字段，删除classes数组
         delete cleaned.classes
       }
+      // 删除is_main_teacher字段，因为后端PersonUpdate结构体中没有这个字段
+      delete cleaned.is_main_teacher
       // 编辑时移除type_字段，因为后端PersonUpdate结构体中没有这个字段
       if (editingId.value) {
         delete cleaned.type_

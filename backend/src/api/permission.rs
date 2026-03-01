@@ -541,6 +541,36 @@ pub async fn apply_yaml_template(
             
             let mut applied_count = 0;
             
+            // 根据合并策略处理现有权限
+            if payload.merge_strategy == "overwrite" {
+                match payload.target_type.as_str() {
+                    "user" => {
+                        if let Some(target_ids) = &payload.target_ids {
+                            for target_id in target_ids {
+                                let _ = sqlx::query("DELETE FROM user_permissions WHERE user_id = $1")
+                                    .bind(target_id)
+                                    .execute(&pool)
+                                    .await;
+                            }
+                        }
+                    },
+                    "role" => {
+                        if let Some(role) = &payload.role {
+                            let _ = sqlx::query("DELETE FROM permissions WHERE role = $1")
+                                .bind(role)
+                                .execute(&pool)
+                                .await;
+                        }
+                    },
+                    "all" => {
+                        // 对于所有用户，我们不删除现有权限，因为这会删除所有用户的权限
+                        // 这是一个安全措施，防止误操作
+                        println!("警告: 'overwrite' 策略不适用于 'all' 目标类型，将使用 'merge' 策略");
+                    },
+                    _ => {}
+                }
+            }
+            
             match payload.target_type.as_str() {
                 "user" => {
                     println!("=== YAML TEMPLATE DEBUG: Applying to users ===");
@@ -563,13 +593,16 @@ pub async fn apply_yaml_template(
                     println!("=== YAML TEMPLATE DEBUG: Applying to role ===");
                     if let Some(role) = payload.role {
                         println!("Target role: {}", role);
-                        if let Err(e) = template.apply_to_role(&pool, &role).await {
-                            // 记录错误
-                            println!("应用模板到角色 {} 失败: {}", role, e);
-                            eprintln!("应用模板到角色 {} 失败: {}", role, e);
-                        } else {
-                            println!("Successfully applied template to role: {}", role);
-                            applied_count += 1;
+                        match template.apply_to_role(&pool, &role).await {
+                            Ok(_) => {
+                                println!("Successfully applied template to role: {}", role);
+                                applied_count += 1;
+                            }
+                            Err(e) => {
+                                // 记录错误
+                                println!("应用模板到角色 {} 失败: {}", role, e);
+                                eprintln!("应用模板到角色 {} 失败: {}", role, e);
+                            }
                         }
                     }
                 },

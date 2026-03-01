@@ -94,6 +94,42 @@ permissions:
   - permission: -notice.delete
     priority: 15
   
+  # ========== 通知管理权限 ==========
+  # 只能查看通知
+  - permission: notice.view
+    priority: 10
+  # 否定权限：不能管理通知
+  - permission: -notice.create
+    priority: 15
+  - permission: -notice.update
+    priority: 15
+  - permission: -notice.delete
+    priority: 15
+  
+  # ========== 小组管理权限 ==========
+  # 只能查看小组（子女所在小组）
+  - permission: group.view
+    priority: 10
+  # 否定权限：不能管理小组
+  - permission: -group.create
+    priority: 15
+  - permission: -group.update
+    priority: 15
+  - permission: -group.delete
+    priority: 15
+  - permission: -group.update.member
+    priority: 15
+  - permission: -group.update.score
+    priority: 15
+  
+  # ========== AI 助手权限 ==========
+  - permission: ai.view
+    priority: 10
+  - permission: ai.chat
+    priority: 10
+  - permission: ai.analyze
+    priority: 10
+  
   # ========== 仪表板权限 ==========
   - permission: dashboard.view
     priority: 10
