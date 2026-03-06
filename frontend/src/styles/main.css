@@ -12,8 +12,8 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
-  color: #5D4037;
-  background-color: #FAF5ED;
+  color: #4E5969;
+  background-color: #F2F3F5;
 }
 
 a {
@@ -48,17 +48,17 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 ::-webkit-scrollbar-track {
-  background: #F5E6D3;
+  background: #E6F0FF;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #C4A574;
+  background: #165DFF;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #A0522D;
+  background: #0E47CC;
 }
 
 .view-container {
@@ -98,17 +98,17 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .id-cell::-webkit-scrollbar-track {
-  background: #F5E6D3;
+  background: #E6F0FF;
   border-radius: 4px;
 }
 
 .id-cell::-webkit-scrollbar-thumb {
-  background: #C4A574;
+  background: #165DFF;
   border-radius: 4px;
 }
 
 .id-cell::-webkit-scrollbar-thumb:hover {
-  background: #A0522D;
+  background: #0E47CC;
 }
 
 .section {
@@ -125,7 +125,7 @@ h1, h2, h3, h4, h5, h6 {
 .section-header h3 {
   margin: 0;
   font-size: 16px;
-  color: #5D4037;
+  color: #4E5969;
 }
 
 .empty-state {
@@ -168,26 +168,26 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
   gap: 10px;
   padding: 10px;
-  border: 1px solid #E8D5C4;
+  border: 1px solid #E6E8EB;
   border-radius: 4px;
-  background-color: #FAF5ED;
+  background-color: #FFFFFF;
 }
 
 .el-card {
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(139, 69, 19, 0.08);
-  background-color: #FDF8F0;
-  border: 1px solid #E8D5C4;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(78, 89, 105, 0.12);
+  background-color: #FFFFFF;
+  border: 1px solid #F2F3F5;
 }
 
 .el-table {
   border-radius: 4px;
-  background-color: #FDF8F0;
+  background-color: #FFFFFF;
 }
 
 .el-dialog {
   border-radius: 8px;
-  background-color: #FDF8F0;
+  background-color: #FFFFFF;
 }
 
 .el-form-item {
@@ -195,12 +195,12 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .el-button--primary {
-  --el-button-bg-color: #A0522D;
-  --el-button-border-color: #A0522D;
-  --el-button-hover-bg-color: #8B4513;
-  --el-button-hover-border-color: #8B4513;
-  --el-button-active-bg-color: #6B3410;
-  --el-button-active-border-color: #6B3410;
+  --el-button-bg-color: #165DFF;
+  --el-button-border-color: #165DFF;
+  --el-button-hover-bg-color: #0E47CC;
+  --el-button-hover-border-color: #0E47CC;
+  --el-button-active-bg-color: #0A3599;
+  --el-button-active-border-color: #0A3599;
 }
 
 .el-tag--success {

@@ -28,7 +28,7 @@
 .group-name {
   margin: 0;
   font-size: 16px;
-  color: #5D4037;
+  color: #101010;
 }
 
 .score-tag {
@@ -42,7 +42,7 @@
 
 .description {
   margin: 0 0 10px 0;
-  color: #6D5D4B;
+  color: #4E5969;
   font-size: 14px;
   min-height: 40px;
   overflow: hidden;
@@ -55,7 +55,7 @@
 .meta-info {
   display: flex;
   gap: 15px;
-  color: #8B7355;
+  color: #86909C;
   font-size: 13px;
 }
 
@@ -70,7 +70,7 @@
   gap: 8px;
   justify-content: flex-end;
   padding-top: 10px;
-  border-top: 1px solid #E8D5C4;
+  border-top: 1px solid #F2F3F5;
 }
 
 :deep(.el-card__header) {
@@ -96,7 +96,7 @@
 .title {
   font-size: 18px;
   font-weight: bold;
-  color: #5D4037;
+  color: #101010;
 }
 
 .group-info-section {
@@ -114,15 +114,15 @@
 }
 
 .student-list-container {
-  border: 1px solid #E8D5C4;
+  border: 1px solid #F2F3F5;
   border-radius: 4px;
 }
 
 .selected-info {
   padding: 10px;
-  background-color: #F5E6D3;
+  background-color: #E6F0FF;
   border-radius: 4px;
-  color: #8B4513;
+  color: #165DFF;
   font-weight: bold;
   text-align: center;
 }

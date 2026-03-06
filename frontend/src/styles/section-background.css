@@ -12,8 +12,8 @@
   height: 20vh;
   background: linear-gradient(
     180deg,
-    #FDF8F0 0%,
-    #F5E6D3 40%,
+    #E6F0FF 0%,
+    #F2F8FF 40%,
     rgba(255, 255, 255, 0) 100%
   );
   pointer-events: none;
@@ -56,7 +56,7 @@
 
 .circle-outer-bg {
   fill: none;
-  stroke: rgba(160, 82, 45, 0.15);
+  stroke: rgba(22, 93, 255, 0.15);
   stroke-width: 1.5;
   animation: rotateCircleOuter 25s linear infinite;
   transform-origin: center;
@@ -64,7 +64,7 @@
 
 .circle-middle-bg {
   fill: none;
-  stroke: rgba(160, 82, 45, 0.12);
+  stroke: rgba(22, 93, 255, 0.12);
   stroke-width: 1.5;
   animation: rotateCircleMiddle 30s linear infinite reverse;
   transform-origin: center;
@@ -72,7 +72,7 @@
 
 .circle-inner-bg {
   fill: none;
-  stroke: rgba(160, 82, 45, 0.1);
+  stroke: rgba(22, 93, 255, 0.1);
   stroke-width: 1.5;
   animation: rotateCircleInner 35s linear infinite;
   transform-origin: center;
@@ -107,7 +107,7 @@
 
 .star-on-circle {
   font-size: 16px;
-  fill: rgba(139, 69, 19, 0.4);
+  fill: rgba(22, 93, 255, 0.4);
   animation: inherit;
 }
 

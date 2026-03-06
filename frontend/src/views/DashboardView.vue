@@ -1,39 +1,50 @@
 <template>
   <div class="dashboard-container">
     <!-- 侧边栏 -->
-    <div class="sidebar">
-      <!-- 仪表盘（独立菜单项，没有分组） -->
-      <div class="sidebar-section" v-if="dashboardMenuItem">
-        <div class="sidebar-section-title">首页 / 仪表盘</div>
+    <div class="sidebar-wrapper">
+      <div class="sidebar" ref="sidebarRef">
+        <!-- 滑动背景 - 固定定位，不跟随滚动 -->
         <div 
-          class="sidebar-item" 
-          :class="{ active: isDashboardActive }" 
-          @click="navigateToDashboard"
-        >
-          <div class="sidebar-icon">
-            <el-icon><component :is="getIconComponent(dashboardMenuItem.icon)" /></el-icon>
+          class="sidebar-active-bg" 
+          :style="activeBgStyle"
+          v-if="activeBgStyle"
+        ></div>
+        
+        <!-- 仪表盘（独立菜单项，没有分组） -->
+        <div class="sidebar-section" v-if="dashboardMenuItem">
+          <div class="sidebar-section-title">首页 / 仪表盘</div>
+          <div 
+            class="sidebar-item" 
+            :class="{ active: isDashboardActive }" 
+            @click="navigateToDashboard"
+            ref="dashboardItemRef"
+          >
+            <div class="sidebar-icon">
+              <el-icon><component :is="getIconComponent(dashboardMenuItem.icon)" /></el-icon>
+            </div>
+            <span>{{ dashboardMenuItem.title }}</span>
           </div>
-          <span>{{ dashboardMenuItem.title }}</span>
         </div>
-      </div>
-      
-      <!-- 动态菜单分组 -->
-      <div v-for="group in filteredMenuGroups" :key="group.id" class="sidebar-section">
-        <div class="sidebar-section-title">{{ group.title }}</div>
-        <div
-          v-for="item in getMenuItemsByGroup(group.id)"
-          :key="item.id"
-          class="sidebar-item"
-          :class="{ active: isMenuItemActive(item) }"
-          @click="navigateToMenuItem(item)"
-        >
-          <div class="sidebar-icon">
-            <el-icon><component :is="getIconComponent(item.icon)" /></el-icon>
+        
+        <!-- 动态菜单分组 -->
+        <div v-for="group in filteredMenuGroups" :key="group.id" class="sidebar-section">
+          <div class="sidebar-section-title">{{ group.title }}</div>
+          <div
+            v-for="item in getMenuItemsByGroup(group.id)"
+            :key="item.id"
+            class="sidebar-item"
+            :class="{ active: isMenuItemActive(item) }"
+            @click="navigateToMenuItem(item)"
+            :ref="el => setMenuItemRef(el, item.id)"
+          >
+            <div class="sidebar-icon">
+              <el-icon><component :is="getIconComponent(item.icon)" /></el-icon>
+            </div>
+            <span>{{ item.title }}</span>
           </div>
-          <span>{{ item.title }}</span>
         </div>
+        
       </div>
-      
     </div>
     
     <!-- 回到顶部按钮 - 固定在页面上，位于侧边栏上方 -->
@@ -354,7 +365,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { 
   House, User, UserFilled, Timer, GoodsFilled, Message, Bell, Setting, 
@@ -408,6 +419,46 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const userMenuVisible = ref(false)
+
+const sidebarRef = ref<HTMLElement | null>(null)
+const dashboardItemRef = ref<HTMLElement | null>(null)
+const menuItemRefs = ref<Record<string, HTMLElement>>({})
+const activeBgStyle = ref<{ transform: string } | null>(null)
+
+const setMenuItemRef = (el: any, id: string) => {
+  if (el) {
+    menuItemRefs.value[id] = el
+  }
+}
+
+const updateActiveBgPosition = async () => {
+  await nextTick()
+  
+  let activeElement: HTMLElement | null = null
+  
+  if (isDashboardActive.value && dashboardItemRef.value) {
+    activeElement = dashboardItemRef.value
+  } else {
+    const activeItem = filteredMenuItems.value.find(item => isMenuItemActive(item))
+    if (activeItem && menuItemRefs.value[activeItem.id]) {
+      activeElement = menuItemRefs.value[activeItem.id]
+    }
+  }
+  
+  if (activeElement && sidebarRef.value) {
+    const sidebarRect = sidebarRef.value.getBoundingClientRect()
+    const elementRect = activeElement.getBoundingClientRect()
+    const offsetTop = elementRect.top - sidebarRect.top + sidebarRef.value.scrollTop
+    
+    activeBgStyle.value = {
+      transform: `translateY(${offsetTop}px)`
+    }
+  }
+}
+
+watch(() => route.path, () => {
+  updateActiveBgPosition()
+}, { immediate: true })
 
 // 类型定义
 interface TodoItem {

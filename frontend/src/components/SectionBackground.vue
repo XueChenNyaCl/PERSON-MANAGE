@@ -8,7 +8,7 @@
       >
         <defs>
           <filter id="circleShadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="rgba(139, 69, 19, 0.15)" />
+            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="rgba(22, 93, 255, 0.15)" />
           </filter>
         </defs>
         
@@ -21,7 +21,7 @@
               cy="0"
               r="360"
               fill="none"
-              stroke="#A0522D"
+              stroke="#165DFF"
               stroke-width="2"
               filter="url(#circleShadow)"
             />
@@ -35,7 +35,7 @@
               text-anchor="middle"
               dominant-baseline="middle"
               font-size="16"
-              fill="#8B4513"
+              fill="#165DFF"
             >✦</text>
           </g>
           
@@ -47,7 +47,7 @@
               cy="0"
               r="480"
               fill="none"
-              stroke="#C4A574"
+              stroke="#4080FF"
               stroke-width="1.8"
               filter="url(#circleShadow)"
             />
@@ -61,7 +61,7 @@
               text-anchor="middle"
               dominant-baseline="middle"
               font-size="14"
-              fill="#8B4513"
+              fill="#4080FF"
             >✦</text>
           </g>
           
@@ -73,7 +73,7 @@
               cy="0"
               r="600"
               fill="none"
-              stroke="#E8D5C4"
+              stroke="#6BA0FF"
               stroke-width="1.6"
               filter="url(#circleShadow)"
             />
@@ -87,7 +87,7 @@
               text-anchor="middle"
               dominant-baseline="middle"
               font-size="12"
-              fill="#8B4513"
+              fill="#6BA0FF"
             >✦</text>
           </g>
         </g>

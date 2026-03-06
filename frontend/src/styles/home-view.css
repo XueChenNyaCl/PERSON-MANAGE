@@ -133,8 +133,8 @@
 }
 
 .board .left-text .actions .btn:hover {
-  background-color: #FDF8F0;
-  color: #8B4513;
+  background-color: #FFFFFF;
+  color: #165DFF;
 }
 
 .board .left-text .actions .btn:active {

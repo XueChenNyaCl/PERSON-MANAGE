@@ -1,7 +1,7 @@
 .ai-settings-view {
   padding: 20px;
   min-height: 100%;
-  background-color: #FAF5ED;
+  background-color: #FFFFFF;
   max-width: 1400px;
   margin: 0 auto;
 }
@@ -9,16 +9,16 @@
 .ai-settings-container {
   max-width: 800px;
   margin: 0 auto;
-  background-color: #FDF8F0;
+  background-color: #FFFFFF;
   padding: 30px;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(139, 69, 19, 0.1);
-  border: 1px solid #E8D5C4;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(78, 89, 105, 0.12);
+  border: 1px solid #F2F3F5;
 }
 
 .ai-settings-container h2 {
   margin-bottom: 30px;
-  color: #5D4037;
+  color: #101010;
   font-size: 24px;
   font-weight: 600;
 }

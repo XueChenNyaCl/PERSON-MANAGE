@@ -7,12 +7,12 @@
 .class-info {
   margin-bottom: 30px;
   padding-bottom: 20px;
-  border-bottom: 1px solid #E8D5C4;
+  border-bottom: 1px solid #F2F3F5;
 }
 
 .class-info h3 {
   margin: 0 0 15px 0;
-  color: #8B4513;
+  color: #101010;
 }
 
 .class-detail {
@@ -43,5 +43,5 @@
 
 .list-section h4 {
   margin: 0 0 15px 0;
-  color: #5D4037;
+  color: #4E5969;
 }
