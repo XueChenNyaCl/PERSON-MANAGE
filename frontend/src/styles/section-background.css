@@ -1,0 +1,142 @@
+.section-background {
+  position: relative;
+  overflow: hidden;
+}
+
+.section-background::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 20vh;
+  background: linear-gradient(
+    180deg,
+    #FDF8F0 0%,
+    #F5E6D3 40%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.section-background::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 50vh;
+  pointer-events: none;
+  z-index: 0;
+  background: 
+    radial-gradient(circle at 50% 100%, transparent 60px, transparent 60px),
+    radial-gradient(circle at 50% 100%, transparent 120px, transparent 120px),
+    radial-gradient(circle at 50% 100%, transparent 180px, transparent 180px);
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 100%);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0) 100%);
+}
+
+.circles-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 50vh;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.circles-background svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.circle-outer-bg {
+  fill: none;
+  stroke: rgba(160, 82, 45, 0.15);
+  stroke-width: 1.5;
+  animation: rotateCircleOuter 25s linear infinite;
+  transform-origin: center;
+}
+
+.circle-middle-bg {
+  fill: none;
+  stroke: rgba(160, 82, 45, 0.12);
+  stroke-width: 1.5;
+  animation: rotateCircleMiddle 30s linear infinite reverse;
+  transform-origin: center;
+}
+
+.circle-inner-bg {
+  fill: none;
+  stroke: rgba(160, 82, 45, 0.1);
+  stroke-width: 1.5;
+  animation: rotateCircleInner 35s linear infinite;
+  transform-origin: center;
+}
+
+@keyframes rotateCircleOuter {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes rotateCircleMiddle {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes rotateCircleInner {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.star-on-circle {
+  font-size: 16px;
+  fill: rgba(139, 69, 19, 0.4);
+  animation: inherit;
+}
+
+.star-outer {
+  animation: rotateCircleOuter 25s linear infinite;
+  transform-origin: center;
+}
+
+.star-middle {
+  animation: rotateCircleMiddle 30s linear infinite reverse;
+  transform-origin: center;
+}
+
+.star-inner {
+  animation: rotateCircleInner 35s linear infinite;
+  transform-origin: center;
+}
+
+.section-content {
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 768px) {
+  .section-background::before {
+    height: 15vh;
+  }
+  
+  .circles-background {
+    height: 40vh;
+  }
+}

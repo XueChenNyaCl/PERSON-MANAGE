@@ -3,22 +3,12 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <h1>{{ $t('user_permission_page.title') }}</h1>
-      <div class="header-actions">
-        <el-button type="primary" @click="handleImportYaml">
-          <el-icon><Upload /></el-icon>
-          {{ $t('permission.import_yaml') }}
-        </el-button>
-        <el-button @click="refreshData">
-          <el-icon><Refresh /></el-icon>
-          {{ $t('common.refresh') }}
-        </el-button>
-      </div>
     </div>
 
     <!-- 主内容区域 -->
-    <div class="main-content">
+    <div class="permission-main-content">
       <!-- 左侧用户列表 -->
-      <div class="left-panel">
+      <div class="permission-panel permission-panel-left">
         <div class="panel-header">
           <h3>{{ $t('user_permission_page.user_list') }}</h3>
           <el-input
@@ -62,7 +52,7 @@
       </div>
 
       <!-- 中间权限操作区 -->
-      <div class="center-panel">
+      <div class="permission-panel permission-panel-center">
         <div class="panel-header">
           <h3 v-if="selectedUser">
             {{ $t('user_permission_page.add_permission_to_user') }}: {{ selectedUser.name }}
@@ -160,7 +150,7 @@
       </div>
 
       <!-- 右侧批量操作区 -->
-      <div class="right-panel">
+      <div class="permission-panel permission-panel-right">
         <div class="panel-header">
           <h3>{{ $t('user_permission_page.bulk_operations') }}</h3>
         </div>
@@ -561,146 +551,4 @@ onMounted(async () => {
 })
 </script>
 
-<style scoped>
-/* 基础样式已经导入外部CSS文件，这里只写组件特定的样式 */
-.negation-permission {
-  color: #f56c6c;
-  font-weight: bold;
-}
-
-.permission-management-container {
-  height: 100%;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 24px;
-}
-
-.main-content {
-  display: flex;
-  gap: 20px;
-  height: calc(100vh - 120px);
-}
-
-.left-panel,
-.center-panel,
-.right-panel {
-  background: #fff;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-}
-
-.left-panel {
-  flex: 1;
-}
-
-.center-panel {
-  flex: 2;
-}
-
-.right-panel {
-  flex: 1;
-}
-
-.panel-header {
-  margin-bottom: 20px;
-}
-
-.panel-body {
-  height: calc(100% - 60px);
-  overflow-y: auto;
-}
-
-.permission-search-section {
-  margin-bottom: 24px;
-}
-
-.permission-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.permission-list-section {
-  margin-top: 24px;
-}
-
-.bulk-operation-section,
-.bulk-permission-section {
-  margin-bottom: 24px;
-}
-
-.description {
-  color: #666;
-  font-size: 14px;
-  margin-bottom: 16px;
-}
-
-.yaml-upload {
-  margin-bottom: 16px;
-}
-
-.yaml-preview {
-  background: #f5f5f5;
-  padding: 16px;
-  border-radius: 4px;
-  margin-bottom: 16px;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.yaml-preview pre {
-  margin: 0;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-}
-
-.upload-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.bulk-inputs {
-  margin-bottom: 16px;
-}
-
-.bulk-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.yaml-import-dialog {
-  padding: 20px;
-}
-
-.upload-icon {
-  font-size: 48px;
-  color: #409eff;
-}
-
-.upload-text {
-  margin-top: 12px;
-  color: #666;
-}
-
-.yaml-preview-area {
-  margin-top: 24px;
-}
-
-.yaml-preview-area pre {
-  background: #f5f5f5;
-  padding: 16px;
-  border-radius: 4px;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.import-options {
-  margin-top: 24px;
-}
-</style>
+<style scoped src="@/styles/permission-management.css"></style>

@@ -231,7 +231,7 @@ pub async fn list_user_permissions(
             permission: node.permission,
             value: node.value,
             priority: node.priority,
-            created_at: chrono::Utc::now().to_rfc3339(), // 注意：这里应该从数据库获取
+            created_at: chrono::Utc::now().to_rfc3339(), 
         }
     }).collect();
     
@@ -498,7 +498,6 @@ pub async fn apply_yaml_template(
     println!("YAML content length: {}", payload.yaml_content.len());
     println!("YAML content preview: {}", 
         if payload.yaml_content.len() > 100 { 
-            // 安全地切片UTF-8字符串，确保在字符边界处切片
             let mut end = 100;
             while !payload.yaml_content.is_char_boundary(end) && end > 0 {
                 end -= 1;

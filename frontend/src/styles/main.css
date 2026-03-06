@@ -1,0 +1,247 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #5D4037;
+  background-color: #FAF5ED;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 500;
+  letter-spacing: .3rem;
+  text-transform: uppercase;
+}
+
+@font-face {
+  font-family: 'iconfont';
+  src: url('//at.alicdn.com/t/font_2353907_e2og6dtx4cc.eot');
+  src: url('//at.alicdn.com/t/font_2353907_e2og6dtx4cc.eot?#iefix') format('embedded-opentype'),
+       url('//at.alicdn.com/t/font_2353907_e2og6dtx4cc.woff2') format('woff2'),
+       url('//at.alicdn.com/t/font_2353907_e2og6dtx4cc.woff') format('woff'),
+       url('//at.alicdn.com/t/font_2353907_e2og6dtx4cc.ttf') format('truetype'),
+       url('//at.alicdn.com/t/font_2353907_e2og6dtx4cc.svg#iconfont') format('svg');
+}
+
+.title-bar-btns span {
+  font-family: 'iconfont';
+  margin-right: 5px;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F5E6D3;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #C4A574;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #A0522D;
+}
+
+.view-container {
+  padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.search-form {
+  margin-bottom: 20px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.id-cell {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  display: block;
+  scrollbar-width: thin;
+  scrollbar-color: #c1c1c1 #f1f1f1;
+}
+
+.id-cell::-webkit-scrollbar {
+  height: 4px;
+}
+
+.id-cell::-webkit-scrollbar-track {
+  background: #F5E6D3;
+  border-radius: 4px;
+}
+
+.id-cell::-webkit-scrollbar-thumb {
+  background: #C4A574;
+  border-radius: 4px;
+}
+
+.id-cell::-webkit-scrollbar-thumb:hover {
+  background: #A0522D;
+}
+
+.section {
+  margin-top: 30px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.section-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #5D4037;
+}
+
+.empty-state {
+  padding: 60px 0;
+  text-align: center;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.score-positive,
+.score-plus {
+  color: #67c23a;
+  font-weight: bold;
+}
+
+.score-negative,
+.score-minus {
+  color: #f56c6c;
+  font-weight: bold;
+}
+
+.sensitive-info-hidden {
+  color: #999;
+  font-style: italic;
+  user-select: none;
+}
+
+.classes-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.class-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #E8D5C4;
+  border-radius: 4px;
+  background-color: #FAF5ED;
+}
+
+.el-card {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(139, 69, 19, 0.08);
+  background-color: #FDF8F0;
+  border: 1px solid #E8D5C4;
+}
+
+.el-table {
+  border-radius: 4px;
+  background-color: #FDF8F0;
+}
+
+.el-dialog {
+  border-radius: 8px;
+  background-color: #FDF8F0;
+}
+
+.el-form-item {
+  margin-bottom: 18px;
+}
+
+.el-button--primary {
+  --el-button-bg-color: #A0522D;
+  --el-button-border-color: #A0522D;
+  --el-button-hover-bg-color: #8B4513;
+  --el-button-hover-border-color: #8B4513;
+  --el-button-active-bg-color: #6B3410;
+  --el-button-active-border-color: #6B3410;
+}
+
+.el-tag--success {
+  --el-tag-bg-color: #e8f5e9;
+  --el-tag-border-color: #c8e6c9;
+  --el-tag-text-color: #67c23a;
+}
+
+.el-tag--danger {
+  --el-tag-bg-color: #fef0f0;
+  --el-tag-border-color: #fde2e2;
+  --el-tag-text-color: #f56c6c;
+}
+
+.el-tag--warning {
+  --el-tag-bg-color: #fdf6ec;
+  --el-tag-border-color: #faecd8;
+  --el-tag-text-color: #e6a23c;
+}
+
+.el-tag--info {
+  --el-tag-bg-color: #f4f4f5;
+  --el-tag-border-color: #e9e9eb;
+  --el-tag-text-color: #909399;
+}
+
+@media (max-width: 768px) {
+  .view-container {
+    padding: 10px;
+  }
+
+  .person-lists {
+    flex-direction: column;
+  }
+
+  .list-section {
+    min-width: 100%;
+  }
+
+  .class-detail {
+    flex-direction: column;
+    gap: 10px;
+  }
+}

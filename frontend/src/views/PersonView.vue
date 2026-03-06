@@ -635,6 +635,4 @@ onMounted(() => {
 })
 </script>
 
-<style scoped>
-/* 样式已移至 ../styles/person-view.css */
-</style>
+<style scoped src="@/styles/person-view.css"></style>

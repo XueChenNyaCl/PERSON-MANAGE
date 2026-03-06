@@ -1,86 +1,85 @@
-/* 权限管理页面样式 */
 .permission-management-container {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background-color: #f5f5f5;
+  background-color: #FAF5ED;
   min-height: 100vh;
   padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .page-header {
-  background: #fff;
+  background: #FDF8F0;
   padding: 20px 24px;
   border-radius: 8px;
   margin-bottom: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2px 8px rgba(139, 69, 19, 0.08);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  border: 1px solid #E8D5C4;
 }
 
 .page-header h1 {
   font-size: 24px;
   font-weight: 500;
-  color: #165dff;
+  color: #8B4513;
   margin: 0;
 }
 
-.header-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.main-content {
+.permission-main-content {
   display: flex;
   gap: 20px;
-  height: calc(100vh - 160px);
 }
 
-.left-panel,
-.center-panel,
-.right-panel {
-  background: #fff;
+.permission-panel {
+  background: #FDF8F0;
   border-radius: 8px;
   padding: 20px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 12px rgba(139, 69, 19, 0.08);
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
+  border: 1px solid #E8D5C4;
 }
 
-.left-panel {
+.permission-panel-left {
   flex: 1;
   min-width: 300px;
 }
 
-.center-panel {
+.permission-panel-center {
   flex: 2;
   min-width: 500px;
 }
 
-.right-panel {
+.permission-panel-right {
   flex: 1;
   min-width: 300px;
 }
 
 .panel-header {
   padding-bottom: 16px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid #E8D5C4;
   margin-bottom: 20px;
 }
 
 .panel-header h3 {
   font-size: 18px;
   font-weight: 500;
-  color: #161616;
+  color: #5D4037;
   margin: 0 0 16px 0;
+}
+
+.panel-header .el-input {
+  margin-bottom: 0;
 }
 
 .panel-body {
   flex: 1;
   overflow-y: auto;
-  padding-right: 4px;
 }
 
-/* 表格样式 */
 .el-table {
   border-radius: 4px;
   overflow: hidden;
@@ -92,16 +91,11 @@
 }
 
 .el-table :deep(.el-table__row:hover) {
-  background-color: #f5f7fa;
+  background-color: #F5E6D3;
 }
 
 .el-table :deep(.current-row) {
-  background-color: #ecf5ff !important;
-}
-
-/* 输入框和按钮样式 */
-.el-input {
-  margin-bottom: 12px;
+  background-color: #E8D5C4 !important;
 }
 
 .permission-actions {
@@ -118,7 +112,6 @@
   min-width: 200px;
 }
 
-/* 权限列表 */
 .permission-list-section {
   margin-top: 24px;
 }
@@ -126,17 +119,15 @@
 .permission-list-section h4 {
   font-size: 16px;
   font-weight: 500;
-  color: #161616;
+  color: #5D4037;
   margin: 0 0 16px 0;
 }
 
-/* 否定权限样式 */
 .negation-permission {
   color: #f56c6c;
   font-weight: bold;
 }
 
-/* 标签样式 */
 .el-tag {
   font-size: 12px;
   padding: 0 8px;
@@ -144,12 +135,11 @@
   line-height: 22px;
 }
 
-/* 批量操作区 */
 .bulk-operation-section,
 .bulk-permission-section {
   margin-bottom: 32px;
   padding-bottom: 24px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid #E8D5C4;
 }
 
 .bulk-operation-section:last-child,
@@ -161,12 +151,12 @@
 .bulk-permission-section h4 {
   font-size: 16px;
   font-weight: 500;
-  color: #161616;
+  color: #5D4037;
   margin: 0 0 12px 0;
 }
 
 .description {
-  color: #666;
+  color: #6D5D4B;
   font-size: 14px;
   line-height: 1.5;
   margin-bottom: 16px;
@@ -177,8 +167,8 @@
 }
 
 .yaml-preview {
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
+  background: #FAF5ED;
+  border: 1px solid #E8D5C4;
   border-radius: 4px;
   padding: 16px;
   margin-bottom: 16px;
@@ -191,16 +181,9 @@
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 12px;
   line-height: 1.5;
-  color: #495057;
+  color: #5D4037;
   white-space: pre-wrap;
   word-wrap: break-word;
-}
-
-.upload-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
 }
 
 .bulk-inputs {
@@ -217,19 +200,18 @@
   gap: 12px;
 }
 
-/* YAML导入对话框 */
 .yaml-import-dialog {
   padding: 8px;
 }
 
 .upload-icon {
   font-size: 48px;
-  color: #409eff;
+  color: #A0522D;
   margin-bottom: 12px;
 }
 
 .upload-text {
-  color: #666;
+  color: #6D5D4B;
   font-size: 14px;
   margin-top: 8px;
 }
@@ -241,13 +223,13 @@
 .yaml-preview-area h4 {
   font-size: 16px;
   font-weight: 500;
-  color: #161616;
+  color: #5D4037;
   margin: 0 0 12px 0;
 }
 
 .yaml-preview-area pre {
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
+  background: #FAF5ED;
+  border: 1px solid #E8D5C4;
   border-radius: 4px;
   padding: 16px;
   max-height: 300px;
@@ -255,7 +237,7 @@
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 12px;
   line-height: 1.5;
-  color: #495057;
+  color: #5D4037;
   white-space: pre-wrap;
   word-wrap: break-word;
 }
@@ -264,16 +246,12 @@
   margin-top: 24px;
 }
 
-/* 响应式设计 */
 @media (max-width: 1200px) {
-  .main-content {
+  .permission-main-content {
     flex-direction: column;
-    height: auto;
   }
-  
-  .left-panel,
-  .center-panel,
-  .right-panel {
+
+  .permission-panel {
     min-width: unset;
     width: 100%;
     margin-bottom: 20px;
@@ -286,27 +264,27 @@
     align-items: flex-start;
     gap: 16px;
   }
-  
+
   .header-actions {
     width: 100%;
     justify-content: flex-end;
   }
-  
+
   .permission-actions {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .permission-actions .el-input,
   .permission-actions .el-input-number {
     width: 100%;
   }
-  
+
   .upload-actions {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .upload-actions .el-select {
     width: 100%;
   }

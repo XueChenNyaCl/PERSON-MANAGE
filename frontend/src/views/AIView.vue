@@ -250,29 +250,4 @@ const sendMessageWithAction = (action: {action_type: string, name: string, descr
 }
 </script>
 
-<style scoped>
-@import '../styles/ai-view.css';
-
-.quick-queries {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px 16px;
-  background-color: #f5f7fa;
-  border-bottom: 1px solid #e4e7ed;
-}
-
-.quick-queries .el-button {
-  font-size: 12px;
-}
-
-.query-indicator {
-  margin-bottom: 8px;
-}
-
-.query-indicator .el-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-</style>
+<style scoped src="@/styles/ai-view.css"></style>

@@ -33,7 +33,18 @@
           <span>{{ item.title }}</span>
         </div>
       </div>
+      
     </div>
+    
+    <!-- 回到顶部按钮 - 固定在页面上，位于侧边栏上方 -->
+    <button 
+      class="scroll-to-top-btn" 
+      :class="{ visible: showScrollToTop }"
+      @click="scrollToTop" 
+      title="回到顶部"
+    >
+      <el-icon><Top /></el-icon>
+    </button>
     
     <!-- 主内容区 -->
     <div class="main-content">
@@ -62,8 +73,9 @@
       
       <!-- 内容区域 -->
       <div class="content">
-        <!-- 检查是否是仪表盘根路径 -->
-        <div v-if="route.path === '/dashboard'" class="dashboard-cards">
+        <SectionBackground>
+          <!-- 检查是否是仪表盘根路径 -->
+          <div v-if="route.path === '/dashboard'" class="dashboard-cards">
           <h2 class="dashboard-title">仪表盘</h2>
           
           <!-- 老师仪表盘 -->
@@ -333,8 +345,9 @@
           </div>
         </div>
         
-        <!-- 其他路由内容 -->
-        <router-view v-else />
+          <!-- 其他路由内容 -->
+          <router-view v-else />
+        </SectionBackground>
       </div>
     </div>
   </div>
@@ -347,7 +360,7 @@ import {
   House, User, UserFilled, Timer, GoodsFilled, Message, Bell, Setting, 
   Suitcase, OfficeBuilding, DataAnalysis, Operation, Money, TrendCharts, 
   Collection, Top, Reading, Star, Check, Flag, Edit, Calendar, 
-  Tickets, Trophy, Lock, Grid, Document, Ticket, ChatLineRound 
+  Tickets, Trophy, Lock, Grid, Document, Ticket, ChatLineRound
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '../store/auth'
 import { menuItems, menuGroups } from '../config/menu'
@@ -355,7 +368,8 @@ import type { MenuItem } from '../config/types'
 import { personApi } from '../api/person'
 import { attendanceApi } from '../api/attendance'
 import { classApi } from '../api/class'
-import '../styles/dashboard.css'
+import SectionBackground from '../components/SectionBackground.vue'
+import '@styles/dashboard.css'
 
 // 图标名称到组件的映射
 const iconComponents = {
@@ -602,28 +616,7 @@ const fetchStudentData = async () => {
     const presentDays = attendanceData.filter((item: any) => item.status === '正常').length
     studentData.value.attendanceRate = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0
     
-    // 模拟消息数据
-    studentData.value.messages = [
-      {
-        id: '1',
-        sender: '张老师',
-        time: '今天 10:30',
-        content: '数学作业已经发布，请及时完成。'
-      },
-      {
-        id: '2',
-        sender: '系统',
-        time: '今天 09:00',
-        content: '明天将进行英语单元测试，请做好准备。'
-      },
-      {
-        id: '3',
-        sender: '李同学',
-        time: '昨天 16:45',
-        content: '关于小组项目的讨论，我们明天课间碰个面。'
-      }
-    ]
-    
+
   } catch (error) {
     console.error('获取学生数据失败:', error)
   } finally {
@@ -689,6 +682,26 @@ const handleLogout = () => {
   router.push('/login')
 }
 
+// 回到顶部按钮显示状态
+const showScrollToTop = ref(false)
+
+// 滚动到顶部
+const scrollToTop = () => {
+  const sidebar = document.querySelector('.sidebar')
+  if (sidebar) {
+    sidebar.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+// 处理侧边栏滚动事件
+const handleSidebarScroll = () => {
+  const sidebar = document.querySelector('.sidebar')
+  if (sidebar) {
+    // 当滚动距离超过50px时显示按钮
+    showScrollToTop.value = sidebar.scrollTop > 50
+  }
+}
+
 onMounted(() => {
   // 检查是否有token
   if (!authStore.isAuthenticated) {
@@ -706,5 +719,11 @@ onMounted(() => {
       userMenuVisible.value = false
     }
   })
+  
+  // 监听侧边栏滚动事件
+  const sidebar = document.querySelector('.sidebar')
+  if (sidebar) {
+    sidebar.addEventListener('scroll', handleSidebarScroll)
+  }
 })
 </script>

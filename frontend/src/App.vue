@@ -1,19 +1,10 @@
 <template>
   <router-view />
+  <PageTransition :duration="800" />
 </template>
 
-<style>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+<script setup lang="ts">
+import PageTransition from './components/PageTransition.vue'
+</script>
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  color: #333;
-  background-color: #f5f5f5;
-}
-</style>
+<style src="@/styles/main.css"></style>

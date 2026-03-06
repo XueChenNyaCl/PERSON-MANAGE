@@ -76,26 +76,4 @@ const handleLogin = async () => {
 }
 </script>
 
-<style scoped>
-.login-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  background-color: #f0f2f5;
-}
-
-.login-form {
-  width: 400px;
-  padding: 30px;
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-}
-
-.login-form h1 {
-  text-align: center;
-  margin-bottom: 30px;
-  color: #409eff;
-}
-</style>
+<style scoped src="@/styles/login-view.css"></style>

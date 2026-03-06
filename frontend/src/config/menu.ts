@@ -11,6 +11,25 @@ export const menuItems: MenuItem[] = [
     requiredPermission: 'dashboard.view',
     children: []
   },
+
+  // AI 助手
+  {
+    id: 'ai',
+    title: 'AI 对话',
+    icon: 'ChatLineRound',
+    path: '/dashboard/ai',
+    requiredPermission: 'ai.view',
+    parentId: 'ai-management'
+  },
+  {
+    id: 'ai-settings',
+    title: 'AI 设置',
+    icon: 'Setting',
+    path: '/dashboard/ai/settings',
+    requiredPermission: 'ai.settings',
+    parentId: 'ai-management'
+  },
+  
   
   // 人员管理
   {
@@ -86,24 +105,7 @@ export const menuItems: MenuItem[] = [
     parentId: 'notice-management'
   },
   
-  // AI 助手
-  {
-    id: 'ai',
-    title: 'AI 对话',
-    icon: 'ChatLineRound',
-    path: '/dashboard/ai',
-    requiredPermission: 'ai.view',
-    parentId: 'ai-management'
-  },
-  {
-    id: 'ai-settings',
-    title: 'AI 设置',
-    icon: 'Setting',
-    path: '/dashboard/ai/settings',
-    requiredPermission: 'ai.settings',
-    parentId: 'ai-management'
-  },
-  
+
   // 系统设置（仅管理员）
   {
     id: 'system-permission',
@@ -126,6 +128,10 @@ export const menuItems: MenuItem[] = [
 // 菜单分组
 export const menuGroups = [
   {
+    id: 'ai-management',
+    title: 'AI 助手'
+  },
+  {
     id: 'person-management',
     title: '人员管理'
   },
@@ -144,10 +150,6 @@ export const menuGroups = [
   {
     id: 'notice-management',
     title: '通知公告'
-  },
-  {
-    id: 'ai-management',
-    title: 'AI 助手'
   },
   {
     id: 'system-settings',
