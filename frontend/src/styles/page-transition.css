@@ -1,0 +1,78 @@
+.page-transition-overlay {
+  position: fixed;
+  top: 0;
+  left: 180px;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(230, 240, 255, 0.95);
+  border-radius: 0;
+}
+
+.stars-line-container {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: center;
+}
+
+.line-star {
+  font-size: 48px;
+  color: #165DFF;
+  opacity: 0;
+  transform: translateX(var(--start-x)) scale(0);
+  animation: starConnect 0.4s ease forwards;
+  animation-delay: var(--delay);
+  text-shadow: 0 0 15px rgba(22, 93, 255, 0.6);
+}
+
+@keyframes starConnect {
+  0% {
+    opacity: 0;
+    transform: translateX(var(--start-x)) scale(0) rotate(-180deg);
+  }
+  60% {
+    opacity: 1;
+    transform: translateX(0) scale(1.3) rotate(0deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1) rotate(0deg);
+  }
+}
+
+.page-transition-enter-active {
+  animation: fadeIn 0.2s ease;
+}
+
+.page-transition-leave-active {
+  animation: fadeOut 0.4s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .page-transition-overlay {
+    left: 60px;
+  }
+}

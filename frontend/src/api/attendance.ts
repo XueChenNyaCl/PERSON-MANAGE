@@ -7,6 +7,8 @@ export interface AttendanceQuery {
   name?: string
   date?: string
   status?: string
+  class_id?: string
+  person_id?: string
 }
 
 // 考勤创建参数

@@ -11,7 +11,7 @@
       </div>
       <div class="left-text">
         <h2 class="bigtext">SCHOOL MANAGE</h2>
-        <h3 class="middletext">学校综合管理系统</h3>
+        <h3 class="middletext">智联校园多维管理平台</h3>
         <div class="actions">
           <a href="/login" class="btn">登录系统</a>
         </div>
@@ -29,7 +29,7 @@
         <div>人事档案、考勤消费、分组评分、评选通知……<br/><br/>解决学校管理难题，就用学校综合管理系统</div>
       </div>
       <div class="right-pic">
-        <img src="/src/assets/images/school_manage_02.jpg" alt="系统演示" class="video" />
+        <img src="/src/assets/images/school_manage_03.jpg" alt="系统演示" class="video" />
       </div>
     </section>
   </div>

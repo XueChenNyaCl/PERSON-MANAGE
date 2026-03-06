@@ -84,9 +84,10 @@
       
       <!-- 内容区域 -->
       <div class="content">
+        <PageTransition :duration="800" @animation-end="triggerCardAnimations" />
         <SectionBackground>
           <!-- 检查是否是仪表盘根路径 -->
-          <div v-if="route.path === '/dashboard'" class="dashboard-cards">
+          <div v-if="route.path === '/dashboard'" class="dashboard-cards" :class="{ 'cards-animate': showCardAnimation }">
           <h2 class="dashboard-title">仪表盘</h2>
           
           <!-- 老师仪表盘 -->
@@ -343,11 +344,43 @@
               </div>
               <div class="card-body">
                 <div class="activity-list">
-                  <div class="activity-item">
+                  <div v-if="adminData.activities.length === 0" class="activity-item">
                     <div class="activity-icon"></div>
                     <div class="activity-content">
-                      <div class="activity-title">系统启动</div>
-                      <div class="activity-time">{{ new Date().toLocaleString() }}</div>
+                      <div class="activity-title">暂无动态</div>
+                    </div>
+                  </div>
+                  <div v-for="activity in adminData.activities" :key="activity.id" class="activity-item">
+                    <div class="activity-icon" :class="activity.type"></div>
+                    <div class="activity-content">
+                      <div class="activity-title">{{ activity.title }}</div>
+                      <div class="activity-desc">{{ activity.description }}</div>
+                      <div class="activity-time">{{ new Date(activity.created_at).toLocaleString() }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 公告通知 -->
+            <div class="chart-card" style="margin-top: 20px;">
+              <div class="card-header">
+                <h3>公告通知</h3>
+              </div>
+              <div class="card-body">
+                <div class="notice-list">
+                  <div v-if="adminData.notices.length === 0" class="notice-item">
+                    <div class="notice-content">暂无公告</div>
+                  </div>
+                  <div v-for="notice in adminData.notices" :key="notice.id" class="notice-item" :class="{ 'is-important': notice.is_important }">
+                    <div class="notice-title">
+                      <span v-if="notice.is_important" class="important-tag">重要</span>
+                      {{ notice.title }}
+                    </div>
+                    <div class="notice-content">{{ notice.content }}</div>
+                    <div class="notice-meta">
+                      <span>{{ notice.author_name }}</span>
+                      <span>{{ new Date(notice.created_at).toLocaleDateString() }}</span>
                     </div>
                   </div>
                 </div>
@@ -379,7 +412,10 @@ import type { MenuItem } from '../config/types'
 import { personApi } from '../api/person'
 import { attendanceApi } from '../api/attendance'
 import { classApi } from '../api/class'
+import { noticeApi } from '../api/notice'
+import { scoreApi } from '../api/score'
 import SectionBackground from '../components/SectionBackground.vue'
+import PageTransition from '../components/PageTransition.vue'
 import '@styles/dashboard.css'
 
 // 图标名称到组件的映射
@@ -424,11 +460,48 @@ const sidebarRef = ref<HTMLElement | null>(null)
 const dashboardItemRef = ref<HTMLElement | null>(null)
 const menuItemRefs = ref<Record<string, HTMLElement>>({})
 const activeBgStyle = ref<{ transform: string } | null>(null)
+const showCardAnimation = ref(false)
 
 const setMenuItemRef = (el: any, id: string) => {
   if (el) {
     menuItemRefs.value[id] = el
   }
+}
+
+const animateCardsRecursively = (
+  elements: NodeListOf<Element> | Element[],
+  index: number = 0,
+  delay: number = 100
+) => {
+  if (index >= elements.length) return
+  
+  const element = elements[index] as HTMLElement
+  element.style.transitionDelay = `${index * delay}ms`
+  element.classList.add('card-animated')
+  
+  requestAnimationFrame(() => {
+    animateCardsRecursively(elements, index + 1, delay)
+  })
+}
+
+const triggerCardAnimations = async () => {
+  showCardAnimation.value = false
+  
+  await nextTick()
+  
+  const contentEl = document.querySelector('.content')
+  if (!contentEl) return
+  
+  const allCards = contentEl.querySelectorAll('.stat-card, .chart-card, .activity-card')
+  allCards.forEach(card => {
+    card.classList.remove('card-animated')
+    ;(card as HTMLElement).style.transitionDelay = ''
+  })
+  
+  await nextTick()
+  
+  showCardAnimation.value = true
+  animateCardsRecursively(Array.from(allCards))
 }
 
 const updateActiveBgPosition = async () => {
@@ -501,6 +574,25 @@ interface AdminData {
   classCount: number
   teacherCount: number
   todoCount: number
+  notices: NoticeItem[]
+  activities: ActivityItem[]
+}
+
+interface NoticeItem {
+  id: string
+  title: string
+  content: string
+  author_name: string
+  is_important: boolean
+  created_at: string
+}
+
+interface ActivityItem {
+  id: string
+  type: string
+  title: string
+  description: string
+  created_at: string
 }
 
 // 数据状态
@@ -529,7 +621,9 @@ const adminData = ref<AdminData>({
   totalPersons: 0,
   classCount: 0,
   teacherCount: 0,
-  todoCount: 0
+  todoCount: 0,
+  notices: [],
+  activities: []
 })
 
 const username = computed(() => authStore.userName || '管理员')
@@ -601,82 +695,261 @@ const getIconComponent = (iconName: string) => {
 
 // 获取老师数据
 const fetchTeacherData = async () => {
+  console.log('[DashboardView] fetchTeacherData called')
+  console.log('[DashboardView] Teacher user ID:', authStore.user?.id)
   try {
     loading.value = true
     
     // 获取老师关联的班级
-    const classesResponse = await personApi.getTeacherClasses(authStore.user?.id || '')
+    console.log('[DashboardView] Calling personApi.getTeacherClasses with teacher ID:', authStore.user?.id)
+    let classesResponse
+    try {
+      classesResponse = await personApi.getTeacherClasses(authStore.user?.id || '')
+      console.log('[DashboardView] Teacher classes response:', classesResponse)
+      console.log('[DashboardView] Teacher classes data:', classesResponse.data)
+    } catch (error) {
+      console.error('[DashboardView] 获取老师班级失败:', error)
+      console.error('[DashboardView] Error details:', error instanceof Error ? error.message : String(error))
+      classesResponse = { data: [] }
+    }
+    
     const classIds = classesResponse.data.map((cls: any) => cls.id)
+    console.log('[DashboardView] Teacher class IDs:', classIds)
     teacherData.value.classCount = classIds.length
+    
+    if (classIds.length === 0) {
+      console.warn('[DashboardView] 老师没有关联的班级，考勤数据将为空')
+    }
     
     // 获取班级学生数量
     let totalStudents = 0
-    for (const classId of classIds) {
-      const studentsResponse = await personApi.list({
-        page: 1,
-        limit: 1000,
-        type: 'student',
-        class_id: classId
-      })
-      totalStudents += studentsResponse.data.total
+    if (classIds.length > 0) {
+      for (const classId of classIds) {
+        try {
+          console.log('[DashboardView] 获取班级学生, classId:', classId)
+          const studentsResponse = await personApi.list({
+            page: 1,
+            limit: 1000,
+            type: 'student',
+            class_id: classId
+          })
+          console.log('[DashboardView] 班级学生响应, classId:', classId, 'total:', studentsResponse.data.total)
+          totalStudents += studentsResponse.data.total
+        } catch (error) {
+          console.error('[DashboardView] 获取班级学生失败, classId:', classId, 'error:', error)
+        }
+      }
     }
     teacherData.value.studentCount = totalStudents
+    console.log('[DashboardView] 总学生数:', totalStudents)
     
-    // 获取今日考勤
-    const today = new Date().toISOString().split('T')[0]
-    const attendanceResponse = await attendanceApi.list({
-      page: 1,
-      limit: 1000,
-      date: today
-    })
+    // 获取最近7天考勤（只获取教师所管理班级的学生考勤）
+    const today = new Date()
+    const sevenDaysAgo = new Date(today)
+    sevenDaysAgo.setDate(today.getDate() - 7)
+    sevenDaysAgo.setHours(0, 0, 0, 0)
     
-    const attendanceData = attendanceResponse.data.items
-    teacherData.value.attendance.total = attendanceData.length
-    teacherData.value.attendance.present = attendanceData.filter((item: any) => item.status === '正常').length
-    teacherData.value.attendance.late = attendanceData.filter((item: any) => item.status === '迟到').length
-    teacherData.value.attendance.absent = attendanceData.filter((item: any) => item.status === '缺勤').length
-    teacherData.value.attendance.early = attendanceData.filter((item: any) => item.status === '早退').length
+    console.log('[DashboardView] 查询最近7天考勤，日期范围:', sevenDaysAgo.toISOString(), '至', today.toISOString())
+    
+    let allAttendanceData: any[] = []
+    
+    if (classIds.length > 0) {
+      for (const classId of classIds) {
+        try {
+          console.log('[DashboardView] Fetching attendance for class ID:', classId)
+          // 不传date参数，获取所有考勤记录，然后过滤最近7天
+          const attendanceResponse = await attendanceApi.list({
+            page: 1,
+            limit: 1000,
+            class_id: classId
+          })
+          console.log('[DashboardView] Attendance response for class', classId, ':', attendanceResponse.data)
+          console.log('[DashboardView] Attendance items count:', attendanceResponse.data.items.length)
+          
+          // 过滤最近7天的考勤记录
+          const recentAttendance = attendanceResponse.data.items.filter((item: any) => {
+            const itemDate = new Date(item.date)
+            return itemDate >= sevenDaysAgo
+          })
+          console.log('[DashboardView] Recent attendance (last 7 days) for class', classId, ':', recentAttendance.length)
+          
+          allAttendanceData = allAttendanceData.concat(recentAttendance)
+        } catch (error) {
+          console.error('[DashboardView] 获取考勤数据失败, classId:', classId, 'error:', error)
+          console.error('[DashboardView] Error details:', error instanceof Error ? error.message : String(error))
+        }
+      }
+    } else {
+      console.warn('[DashboardView] 没有班级ID，跳过考勤查询')
+    }
+    console.log('[DashboardView] Total attendance data (last 7 days):', allAttendanceData)
+    console.log('[DashboardView] Total attendance count (last 7 days):', allAttendanceData.length)
+    
+    teacherData.value.attendance.total = allAttendanceData.length
+    teacherData.value.attendance.present = allAttendanceData.filter((item: any) => item.status === 'present').length
+    teacherData.value.attendance.late = allAttendanceData.filter((item: any) => item.status === 'late').length
+    teacherData.value.attendance.absent = allAttendanceData.filter((item: any) => item.status === 'absent').length
+    teacherData.value.attendance.early = allAttendanceData.filter((item: any) => item.status === 'early_leave').length
+    
+    console.log('[DashboardView] 考勤统计结果:')
+    console.log('[DashboardView] 总考勤记录:', teacherData.value.attendance.total)
+    console.log('[DashboardView] 正常出勤:', teacherData.value.attendance.present)
+    console.log('[DashboardView] 迟到:', teacherData.value.attendance.late)
+    console.log('[DashboardView] 缺勤:', teacherData.value.attendance.absent)
+    console.log('[DashboardView] 早退:', teacherData.value.attendance.early)
     
   } catch (error) {
-    console.error('获取老师数据失败:', error)
+    console.error('[DashboardView] 获取老师数据失败:', error)
+    console.error('[DashboardView] Error details:', error instanceof Error ? error.message : String(error))
   } finally {
+    console.log('[DashboardView] fetchTeacherData completed, loading set to false')
     loading.value = false
   }
 }
 
 // 获取学生数据
 const fetchStudentData = async () => {
+  console.log('[DashboardView] fetchStudentData called')
+  console.log('[DashboardView] Student user ID:', authStore.user?.id)
   try {
     loading.value = true
     
-    // 获取本周考勤
+    // 获取学生本周考勤
+    const studentId = authStore.user?.id
+    console.log('[DashboardView] Student ID for attendance query:', studentId)
+    
+    if (!studentId) {
+      console.error('[DashboardView] 学生ID为空，无法获取考勤数据')
+      studentData.value.attendanceRate = 0
+      return
+    }
+    
     const today = new Date()
     const weekStart = new Date(today)
     weekStart.setDate(today.getDate() - today.getDay() + 1)
+    weekStart.setHours(0, 0, 0, 0)
     const weekEnd = new Date(today)
     weekEnd.setDate(today.getDate() + (7 - today.getDay()))
+    weekEnd.setHours(23, 59, 59, 999)
     
-    const attendanceResponse = await attendanceApi.list({
-      page: 1,
-      limit: 1000,
-      date: weekStart.toISOString().split('T')[0]
-    })
+    console.log('[DashboardView] 查询学生考勤, studentId:', studentId, '本周范围:', weekStart.toISOString(), '至', weekEnd.toISOString())
     
-    const attendanceData = attendanceResponse.data.items
-    const totalDays = attendanceData.length
-    const presentDays = attendanceData.filter((item: any) => item.status === '正常').length
-    studentData.value.attendanceRate = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0
+    try {
+      // 获取学生考勤记录（不指定日期，获取所有记录再过滤）
+      const attendanceResponse = await attendanceApi.list({
+        page: 1,
+        limit: 1000,
+        person_id: studentId
+      })
+      console.log('[DashboardView] 学生考勤响应:', attendanceResponse.data)
+      console.log('[DashboardView] 考勤记录总数:', attendanceResponse.data.items.length)
+      
+      // 过滤出本周的记录
+      const thisWeekData = attendanceResponse.data.items.filter((item: any) => {
+        const itemDate = new Date(item.date)
+        return itemDate >= weekStart && itemDate <= weekEnd
+      })
+      
+      console.log('[DashboardView] 本周考勤记录:', thisWeekData.length)
+      console.log('[DashboardView] 本周考勤详情:', thisWeekData)
+      
+      const totalDays = thisWeekData.length
+      const presentDays = thisWeekData.filter((item: any) => item.status === 'present').length
+      
+      console.log('[DashboardView] 本周总天数:', totalDays)
+      console.log('[DashboardView] 正常出勤天数:', presentDays)
+      
+      studentData.value.attendanceRate = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0
+      console.log('[DashboardView] 出勤率:', studentData.value.attendanceRate, '%')
+      
+    } catch (error) {
+      console.error('[DashboardView] 获取学生考勤失败:', error)
+      console.error('[DashboardView] Error details:', error instanceof Error ? error.message : String(error))
+      studentData.value.attendanceRate = 0
+    }
+    
+    // 获取学生消息通知（学校公告和班级公告）
+    try {
+      console.log('[DashboardView] 获取学生消息通知')
+      
+      // 获取学生详细信息（包含班级ID）
+      const studentInfoResponse = await personApi.get(studentId)
+      console.log('[DashboardView] 学生详细信息:', studentInfoResponse.data)
+      
+      const studentInfo = studentInfoResponse.data as any
+      const classId = studentInfo.class_id
+      console.log('[DashboardView] 学生班级ID:', classId)
+      
+      const allMessages: MessageItem[] = []
+      
+      // 获取学校公告（公开公告）
+      console.log('[DashboardView] 获取学校公告')
+      const schoolNoticesResponse = await noticeApi.list({
+        page: 1,
+        limit: 10,
+        target_type: 'school'
+      })
+      console.log('[DashboardView] 学校公告响应:', schoolNoticesResponse.data)
+      
+      schoolNoticesResponse.data.items.forEach((notice: any) => {
+        allMessages.push({
+          id: notice.id,
+          sender: notice.author_name || '学校',
+          time: notice.created_at,
+          content: notice.title + ': ' + notice.content.substring(0, 50) + (notice.content.length > 50 ? '...' : '')
+        })
+      })
+      
+      // 获取班级公告（如果学生有关联班级）
+      if (classId) {
+        console.log('[DashboardView] 获取班级公告, classId:', classId)
+        const classNoticesResponse = await noticeApi.list({
+          page: 1,
+          limit: 10,
+          target_type: 'class',
+          target_id: classId
+        })
+        console.log('[DashboardView] 班级公告响应:', classNoticesResponse.data)
+        
+        classNoticesResponse.data.items.forEach((notice: any) => {
+          allMessages.push({
+            id: notice.id,
+            sender: notice.author_name || '班级',
+            time: notice.created_at,
+            content: notice.title + ': ' + notice.content.substring(0, 50) + (notice.content.length > 50 ? '...' : '')
+          })
+        })
+      } else {
+        console.warn('[DashboardView] 学生没有关联班级，跳过班级公告获取')
+      }
+      
+      // 按时间倒序排序
+      allMessages.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+      
+      // 只保留最新的5条消息
+      studentData.value.messages = allMessages.slice(0, 5)
+      console.log('[DashboardView] 学生消息通知:', studentData.value.messages)
+      
+    } catch (error) {
+      console.error('[DashboardView] 获取学生消息通知失败:', error)
+      console.error('[DashboardView] Error details:', error instanceof Error ? error.message : String(error))
+      studentData.value.messages = []
+    }
     
 
   } catch (error) {
-    console.error('获取学生数据失败:', error)
+    console.error('[DashboardView] 获取学生数据失败:', error)
+    console.error('[DashboardView] Error details:', error instanceof Error ? error.message : String(error))
   } finally {
+    console.log('[DashboardView] fetchStudentData completed, loading set to false')
     loading.value = false
   }
 }
 
 // 获取管理员数据
 const fetchAdminData = async () => {
+  console.log('[DashboardView] fetchAdminData called')
+  console.log('[DashboardView] Admin user ID:', authStore.user?.id)
   try {
     loading.value = true
     
@@ -702,25 +975,97 @@ const fetchAdminData = async () => {
     })
     adminData.value.classCount = classesResponse.data.total
     
+    // 获取公告列表
+    try {
+      console.log('[DashboardView] Fetching notices')
+      const noticesResponse = await noticeApi.list({
+        page: 1,
+        limit: 5
+      })
+      console.log('[DashboardView] Notices response:', noticesResponse.data)
+      adminData.value.notices = noticesResponse.data.items.map((item: any) => ({
+        id: item.id,
+        title: item.title,
+        content: item.content,
+        author_name: item.author_name,
+        is_important: item.is_important,
+        created_at: item.created_at
+      }))
+      console.log('[DashboardView] Processed notices:', adminData.value.notices)
+    } catch (error) {
+      console.error('[DashboardView] 获取公告失败:', error)
+      adminData.value.notices = []
+    }
+    
+    // 获取最近动态（基于考勤和评分记录）
+    try {
+      console.log('[DashboardView] Fetching activities (attendance and scores)')
+      const [attendanceRes, scoresRes] = await Promise.all([
+        attendanceApi.list({ page: 1, limit: 5 }),
+        scoreApi.list({ page: 1, limit: 5 })
+      ])
+      console.log('[DashboardView] Attendance activities response:', attendanceRes.data)
+      console.log('[DashboardView] Score activities response:', scoresRes.data)
+      
+      const activities: ActivityItem[] = []
+      
+      attendanceRes.data.items.forEach((item: any) => {
+        activities.push({
+          id: item.id,
+          type: 'attendance',
+          title: `${item.person_name} 考勤记录`,
+          description: `状态: ${item.status === 'present' ? '正常' : item.status === 'late' ? '迟到' : item.status === 'absent' ? '缺勤' : item.status === 'early_leave' ? '早退' : '请假'}`,
+          created_at: item.created_at
+        })
+      })
+      
+      scoresRes.data.items.forEach((item: any) => {
+        activities.push({
+          id: item.id,
+          type: 'score',
+          title: `${item.person_name} 评分记录`,
+          description: `分数: ${item.value}`,
+          created_at: item.created_at
+        })
+      })
+      
+      activities.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      adminData.value.activities = activities.slice(0, 10)
+    } catch (error) {
+      console.error('获取动态失败:', error)
+      adminData.value.activities = []
+    }
+    
   } catch (error) {
-    console.error('获取管理员数据失败:', error)
+    console.error('[DashboardView] 获取管理员数据失败:', error)
+    console.error('[DashboardView] Error details:', error instanceof Error ? error.message : String(error))
   } finally {
+    console.log('[DashboardView] fetchAdminData completed, loading set to false')
     loading.value = false
   }
 }
 
 // 加载数据
 const loadDashboardData = async () => {
-  switch (userRole.value) {
-    case 'teacher':
-      await fetchTeacherData()
-      break
-    case 'student':
-      await fetchStudentData()
-      break
-    default:
-      await fetchAdminData()
-      break
+  console.log('[DashboardView] loadDashboardData called, userRole:', userRole.value)
+  try {
+    switch (userRole.value) {
+      case 'teacher':
+        console.log('[DashboardView] Fetching teacher data')
+        await fetchTeacherData()
+        break
+      case 'student':
+        console.log('[DashboardView] Fetching student data')
+        await fetchStudentData()
+        break
+      default:
+        console.log('[DashboardView] Fetching admin data')
+        await fetchAdminData()
+        break
+    }
+    console.log('[DashboardView] loadDashboardData completed')
+  } catch (error) {
+    console.error('[DashboardView] loadDashboardData failed:', error)
   }
 }
 
@@ -754,14 +1099,26 @@ const handleSidebarScroll = () => {
 }
 
 onMounted(() => {
+  console.log('[DashboardView] onMounted called')
+  console.log('[DashboardView] authStore.isAuthenticated:', authStore.isAuthenticated)
+  console.log('[DashboardView] userRole:', userRole.value)
+  console.log('[DashboardView] authStore.user:', authStore.user)
+  
   // 检查是否有token
   if (!authStore.isAuthenticated) {
+    console.log('[DashboardView] User not authenticated, redirecting to login')
     router.push('/login')
     return
   }
   
+  console.log('[DashboardView] Loading dashboard data')
   // 加载仪表盘数据
   loadDashboardData()
+  
+  // 首次加载触发卡片动画
+  setTimeout(() => {
+    showCardAnimation.value = true
+  }, 100)
   
   // 点击外部关闭用户菜单
   document.addEventListener('click', (e) => {

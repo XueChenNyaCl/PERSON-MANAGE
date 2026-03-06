@@ -17,6 +17,7 @@ pub struct AttendanceQuery {
     pub person_id: Option<Uuid>,
     pub date: Option<String>,
     pub status: Option<String>,
+    pub class_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -93,10 +94,21 @@ pub async fn list(
         param_index += 1;
     }
     
+    if query.class_id.is_some() {
+        conditions.push(format!("s.class_id = ${}", param_index));
+        param_index += 1;
+    }
+    
     let where_clause = conditions.join(" AND ");
     
     // 查询总数
-    let count_sql = format!("SELECT COUNT(*) FROM attendances a WHERE {}", where_clause);
+    let count_sql = format!(
+        "SELECT COUNT(*) FROM attendances a 
+         JOIN persons p ON a.person_id = p.id 
+         LEFT JOIN students s ON a.person_id = s.person_id 
+         WHERE {}", 
+        where_clause
+    );
     let mut count_query = sqlx::query_scalar(&count_sql);
     
     if let Some(ref person_id) = query.person_id {
@@ -107,6 +119,9 @@ pub async fn list(
     }
     if let Some(ref status) = query.status {
         count_query = count_query.bind(status);
+    }
+    if let Some(ref class_id) = query.class_id {
+        count_query = count_query.bind(class_id);
     }
     
     let total: i64 = count_query
@@ -119,6 +134,7 @@ pub async fn list(
         "SELECT a.id, a.person_id, p.name as person_name, a.date, a.status, a.time, a.remark, a.created_at 
          FROM attendances a 
          JOIN persons p ON a.person_id = p.id 
+         LEFT JOIN students s ON a.person_id = s.person_id 
          WHERE {} 
          ORDER BY a.date DESC, a.created_at DESC 
          LIMIT ${} OFFSET ${}",
@@ -137,6 +153,9 @@ pub async fn list(
     }
     if let Some(ref status) = query.status {
         data_query = data_query.bind(status);
+    }
+    if let Some(ref class_id) = query.class_id {
+        data_query = data_query.bind(class_id);
     }
     
     let attendances = data_query
