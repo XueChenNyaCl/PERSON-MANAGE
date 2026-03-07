@@ -1,5 +1,19 @@
-use axum::{extract::State, Json, middleware, routing::delete, routing::get, routing::post, routing::put, Router};
+use std::path::PathBuf;
+
+use axum::{
+    extract::State,
+    http::{StatusCode, Uri},
+    middleware,
+    response::{Html, IntoResponse},
+    routing::delete,
+    routing::get,
+    routing::post,
+    routing::put,
+    Json,
+    Router,
+};
 use sqlx::PgPool;
+use tower_http::services::ServeDir;
 
 use crate::api::{ai, ai_actions, ai_assistant, ai_context_provider, ai_data, ai_enhanced, attendance, auth, class, department, debug, group, notice, permission, person, score};
 use crate::core::middleware::auth_middleware;
@@ -9,13 +23,18 @@ use crate::core::plugin::PluginManager;
 #[derive(Clone)]
 pub struct AppState {
     pub pool: Option<PgPool>,
+    pub static_index_path: PathBuf,
     #[allow(dead_code)]
     pub plugin_manager: PluginManager,
 }
 
 pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Router {
+    let static_dir = crate::core::app_paths::resolve_runtime_path("static");
+    let static_index_path = static_dir.join("index.html");
+
     let state = AppState {
         pool,
+        static_index_path,
         plugin_manager,
     };
 
@@ -116,8 +135,26 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
     // 合并路由
     public_routes
         .merge(protected_routes)
+        .nest_service("/assets", ServeDir::new(static_dir.join("assets")))
+        .fallback(spa_fallback)
         // 注入状态
         .with_state(state)
+}
+
+async fn spa_fallback(State(state): State<AppState>, uri: Uri) -> impl IntoResponse {
+    let path = uri.path();
+    if path.starts_with("/api") || path.starts_with("/ws") {
+        return (StatusCode::NOT_FOUND, "Not Found").into_response();
+    }
+
+    match tokio::fs::read_to_string(&state.static_index_path).await {
+        Ok(content) => Html(content).into_response(),
+        Err(_) => (
+            StatusCode::NOT_FOUND,
+            "前端页面未构建，请先生成 static/index.html",
+        )
+            .into_response(),
+    }
 }
 
 async fn health_check() -> &'static str {

@@ -1,5 +1,6 @@
 pub mod ai_action_validator;
 pub mod ai_orchestrator;
+pub mod app_paths;
 pub mod auth;
 pub mod config;
 pub mod db;

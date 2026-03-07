@@ -555,8 +555,9 @@ impl PermissionTemplate {
 
 /// 加载默认权限模板
 pub fn load_default_template(role: &str) -> Result<PermissionTemplate, Box<dyn std::error::Error + Send + Sync>> {
-    let template_path = format!("templates/permissions/{}.yaml", role);
-    PermissionTemplate::from_yaml_file(&template_path)
+    let template_rel_path = format!("templates/permissions/{}.yaml", role);
+    let template_path = crate::core::app_paths::resolve_runtime_path(template_rel_path);
+    PermissionTemplate::from_yaml_file(&template_path.to_string_lossy())
 }
 
 /// 为新用户应用角色模板

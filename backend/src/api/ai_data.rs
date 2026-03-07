@@ -36,7 +36,7 @@ pub struct GroupInfo {
     pub class_id: Uuid,
     pub class_name: String,
     pub member_count: i64,
-    pub total_score: Option<i32>,
+    pub total_score: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

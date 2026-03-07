@@ -269,7 +269,8 @@ pub async fn login(
 #[allow(dead_code)]
 pub fn get_user_permissions(role: &str) -> Vec<String> {
     // 尝试从YAML模板文件加载权限
-    let template_path = format!("templates/permissions/{}.yaml", role);
+    let template_rel_path = format!("templates/permissions/{}.yaml", role);
+    let template_path = crate::core::app_paths::resolve_runtime_path(template_rel_path);
     
     match std::fs::read_to_string(&template_path) {
         Ok(content) => {

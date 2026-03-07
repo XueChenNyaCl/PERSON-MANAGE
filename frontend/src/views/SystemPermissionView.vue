@@ -292,7 +292,6 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Upload,
-  Refresh,
   Search,
   UploadFilled
 } from '@element-plus/icons-vue'
@@ -455,10 +454,6 @@ const isPermissionEffective = (_permission: Permission) => {
 }
 
 // YAML导入相关方法
-const handleImportYaml = () => {
-  showYamlImportDialog.value = true
-}
-
 const handleYamlFileChange = (file: any) => {
   const reader = new FileReader()
   reader.addEventListener('load', (e) => {
