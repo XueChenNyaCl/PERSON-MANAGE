@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct Score {
     pub id: Uuid,
@@ -14,6 +15,7 @@ pub struct Score {
     pub updated_at: chrono::NaiveDateTime,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ScoreCreate {
     pub person_id: Uuid,
@@ -24,6 +26,7 @@ pub struct ScoreCreate {
     pub event_id: Option<Uuid>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ScoreResponse {
     pub id: Uuid,
@@ -51,6 +54,7 @@ impl From<Score> for ScoreResponse {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ScoreSummary {
     pub person_id: Uuid,

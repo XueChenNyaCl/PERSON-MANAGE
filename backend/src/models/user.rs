@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct User {
     pub id: Uuid,
@@ -11,6 +12,7 @@ pub struct User {
     pub updated_at: chrono::NaiveDateTime,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UserCreate {
     pub username: String,
@@ -18,12 +20,14 @@ pub struct UserCreate {
     pub role: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UserLogin {
     pub username: String,
     pub password: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UserResponse {
     pub id: Uuid,

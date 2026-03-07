@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc, NaiveDate};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct Group {
     pub id: Uuid,
@@ -39,6 +40,7 @@ pub struct GroupResponse {
     pub updated_at: DateTime<Utc>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct GroupMember {
     pub id: Uuid,

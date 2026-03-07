@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { UserInfo } from '../api/auth'
+import { useAIStore } from './ai'
 
 // 获取班级ID的后6位
 const getClassSuffix = (classId: string): string => {
@@ -62,10 +63,15 @@ export const useAuthStore = defineStore('auth', () => {
   }
   
   function clearAuth() {
+    const aiStore = useAIStore()
+
     token.value = ''
     user.value = null
     permissions.value = []
     classPermissions.value = {}
+
+    // 退出登录时清理AI聊天上下文，避免下次登录复用旧会话
+    aiStore.clearChatContext()
     
     localStorage.removeItem('token')
     localStorage.removeItem('user')

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct Notice {
     pub id: Uuid,
@@ -14,6 +15,7 @@ pub struct Notice {
     pub updated_at: chrono::NaiveDateTime,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct NoticeCreate {
     pub title: String,
@@ -23,6 +25,7 @@ pub struct NoticeCreate {
     pub attachments: Option<Vec<String>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct NoticeUpdate {
     pub title: Option<String>,
@@ -30,6 +33,7 @@ pub struct NoticeUpdate {
     pub attachments: Option<Vec<String>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct NoticeResponse {
     pub id: Uuid,

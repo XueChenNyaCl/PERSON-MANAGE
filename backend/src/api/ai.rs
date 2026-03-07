@@ -131,6 +131,7 @@ pub struct AIChatResponseChoice {
     pub index: i32,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct AIChatResponse {
     pub id: String,
@@ -141,6 +142,7 @@ pub struct AIChatResponse {
     pub usage: Option<AIChatResponseUsage>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct AIChatResponseUsage {
     pub prompt_tokens: i32,

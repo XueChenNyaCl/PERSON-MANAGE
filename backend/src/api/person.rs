@@ -567,8 +567,6 @@ async fn create_person(
     pool: &sqlx::PgPool,
     payload: PersonCreate,
 ) -> Result<PersonResponse, AppError> {
-    let mut tx = pool.begin().await?;
-
     // 打印payload.name的值，检查是否正确
     println!("Received payload.name: '{}'", payload.name);
     println!("Payload.name type: {:?}", std::any::type_name::<String>());
@@ -609,14 +607,20 @@ async fn create_person(
         }
     };
 
+    // 加载固定路径下的权限模板（templates/permissions/{role}.yaml）
+    let permission_template = crate::core::permission::load_default_template(&payload.type_)
+        .map_err(|e| AppError::InvalidInput(format!("加载权限模板失败({}): {}", payload.type_, e)))?;
+
+    let mut tx = pool.begin().await?;
+
     // 生成密码哈希：如果提供了密码则使用提供的密码，否则使用默认密码123456
     let password_to_hash = payload.password.as_deref().unwrap_or("123456");
     let password_hash = hash_password(password_to_hash)
         .map_err(|_| AppError::Internal)?;
 
     sqlx::query(
-        "INSERT INTO persons (id, name, username, password_hash, gender, birthday, phone, email, type) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+           "INSERT INTO persons (id, name, username, password_hash, gender, birthday, phone, email, type, role) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
     )
     .bind(person_id)
     .bind(&payload.name)
@@ -626,6 +630,7 @@ async fn create_person(
     .bind(birthday)
     .bind(&payload.phone)
     .bind(&payload.email)
+    .bind(&payload.type_)
     .bind(&payload.type_)
     .execute(&mut *tx)
     .await?;
@@ -713,6 +718,28 @@ async fn create_person(
         _ => {
             return Err(AppError::InvalidInput("Invalid person type".to_string()));
         }
+    }
+
+    // 为新建人员自动应用类型对应的权限模板（如 student -> student.yaml）
+    for item in &permission_template.permissions {
+        let (permission_str, value) = if item.permission.starts_with('-') {
+            (&item.permission[1..], false)
+        } else {
+            (item.permission.as_str(), true)
+        };
+
+        sqlx::query(
+            "INSERT INTO user_permissions (user_id, permission, value, priority)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (user_id, permission) DO UPDATE SET
+             value = EXCLUDED.value, priority = EXCLUDED.priority"
+        )
+        .bind(person_id)
+        .bind(permission_str)
+        .bind(value)
+        .bind(item.priority)
+        .execute(&mut *tx)
+        .await?;
     }
 
     tx.commit().await?;

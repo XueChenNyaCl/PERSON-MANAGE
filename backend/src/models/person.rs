@@ -80,6 +80,7 @@ pub struct Student {
     pub status: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct Teacher {
     pub person_id: Uuid,
@@ -90,6 +91,7 @@ pub struct Teacher {
 }
 
 // 老师与班级的关联关系
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct TeacherClass {
     pub teacher_id: Uuid,
@@ -97,6 +99,7 @@ pub struct TeacherClass {
     pub is_main_teacher: bool,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct Parent {
     pub person_id: Uuid,

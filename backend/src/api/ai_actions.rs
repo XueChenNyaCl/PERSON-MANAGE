@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 use chrono::{Local, NaiveDate, NaiveTime};
+use tracing::{info, warn};
 
 use crate::api::routes::AppState;
 use crate::core::auth::Claims;
@@ -79,6 +80,7 @@ pub struct CreateGroupParams {
 /// 更新小组积分参数
 #[derive(Debug, Deserialize)]
 pub struct UpdateGroupScoreParams {
+    #[serde(alias = "group_name", alias = "group")]
     pub group_id: String,
     pub score_change: i32,
     pub reason: String,
@@ -111,7 +113,7 @@ pub struct CreateAttendanceParams {
 /// 创建个人积分记录参数
 #[derive(Debug, Deserialize)]
 pub struct CreateScoreParams {
-    #[serde(alias = "person_id")]
+    #[serde(alias = "person_id", alias = "person", alias = "person_name", alias = "name", alias = "student")]
     pub student_id: String,
     pub reason: String,
     pub value: i32,
@@ -121,7 +123,7 @@ pub struct CreateScoreParams {
 #[derive(Debug, Deserialize)]
 pub struct CreatePersonParams {
     pub name: String,
-    #[serde(alias = "type")]
+    #[serde(default, alias = "type", alias = "personType", alias = "person_kind", alias = "role")]
     pub person_type: String,  // student, teacher, parent
     #[serde(deserialize_with = "deserialize_gender")]
     pub gender: i16,  // 0: 未知, 1: 男, 2: 女
@@ -172,6 +174,7 @@ where
 
 /// 批量创建人员参数
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct CreatePersonsBatchParams {
     pub items: Vec<CreatePersonParams>,
 }
@@ -430,6 +433,7 @@ pub enum ResolutionResult {
 
 /// 人员信息
 #[derive(sqlx::FromRow)]
+#[allow(dead_code)]
 struct PersonInfo {
     id: Uuid,
     name: String,
@@ -604,6 +608,7 @@ impl ParamAutoCompleter {
 // ========== 权限检查函数 ==========
 
 /// 检查用户是否有指定权限
+#[allow(dead_code)]
 async fn check_permission(
     pool: &PgPool,
     user_id: Uuid,
@@ -638,6 +643,186 @@ async fn get_user_permissions(
 pub struct AIActionExecutor;
 
 impl AIActionExecutor {
+    const MAX_BATCH_ITEMS: usize = 100;
+    const MAX_ACTION_TYPE_LEN: usize = 64;
+    const MAX_REASON_LEN: usize = 300;
+    const MAX_PARAM_JSON_BYTES: usize = 64 * 1024;
+    const MAX_NOTICE_TITLE_LEN: usize = 120;
+    const MAX_NOTICE_CONTENT_LEN: usize = 4000;
+    const MAX_GROUP_NAME_LEN: usize = 64;
+    const MAX_GROUP_DESCRIPTION_LEN: usize = 500;
+    const MAX_PERSON_NAME_LEN: usize = 64;
+    const MAX_REMARK_LEN: usize = 500;
+
+    fn invalid_input_response(user_permissions: &[String], message: impl Into<String>) -> AIActionResponse {
+        AIActionResponse {
+            success: false,
+            message: message.into(),
+            data: None,
+            user_permissions: user_permissions.to_vec(),
+            need_confirmation: false,
+            candidates: None,
+        }
+    }
+
+    fn exceeds_char_limit(value: &str, max_len: usize) -> bool {
+        value.chars().count() > max_len
+    }
+
+    fn audit_action(
+        user_id: Uuid,
+        action_type: &str,
+        batch: bool,
+        items_len: usize,
+        result: &Result<AIActionResponse, AppError>,
+    ) {
+        match result {
+            Ok(resp) => info!(
+                target: "ai_action_audit",
+                user_id = %user_id,
+                action_type = %action_type,
+                batch,
+                items_len,
+                success = resp.success,
+                message = %resp.message,
+                "ai action executed"
+            ),
+            Err(err) => warn!(
+                target: "ai_action_audit",
+                user_id = %user_id,
+                action_type = %action_type,
+                batch,
+                items_len,
+                error = %err,
+                "ai action failed"
+            ),
+        }
+    }
+
+    fn normalize_create_person_value(value: &serde_json::Value) -> serde_json::Value {
+        let mut normalized = match value {
+            serde_json::Value::Object(map) => map.clone(),
+            _ => return value.clone(),
+        };
+
+        // 兼容部分模型返回的嵌套 params 结构
+        let nested_params = normalized
+            .get("params")
+            .and_then(|v| v.as_object())
+            .cloned();
+
+        if let Some(inner) = nested_params {
+            for (k, v) in inner {
+                if normalized.get(k.as_str()).is_none() {
+                    normalized.insert(k, v);
+                }
+            }
+        }
+
+        // 统一人员类型字段
+        if !normalized.contains_key("person_type") {
+            for alias in ["type", "personType", "person_kind", "role"] {
+                if let Some(v) = normalized.get(alias).cloned() {
+                    normalized.insert("person_type".to_string(), v);
+                    break;
+                }
+            }
+        }
+
+        // 统一性别字段
+        if !normalized.contains_key("gender") {
+            if let Some(v) = normalized.get("sex").cloned() {
+                normalized.insert("gender".to_string(), v);
+            }
+        }
+
+        serde_json::Value::Object(normalized)
+    }
+
+    fn normalize_create_score_value(value: &serde_json::Value) -> serde_json::Value {
+        let mut normalized = match value {
+            serde_json::Value::Object(map) => map.clone(),
+            _ => return value.clone(),
+        };
+
+        let nested_params = normalized
+            .get("params")
+            .and_then(|v| v.as_object())
+            .cloned();
+
+        if let Some(inner) = nested_params {
+            for (k, v) in inner {
+                if normalized.get(k.as_str()).is_none() {
+                    normalized.insert(k, v);
+                }
+            }
+        }
+
+        if !normalized.contains_key("student_id") {
+            for alias in ["person_id", "person", "person_name", "name", "student"] {
+                if let Some(v) = normalized.get(alias).cloned() {
+                    normalized.insert("student_id".to_string(), v);
+                    break;
+                }
+            }
+        }
+
+        if !normalized.contains_key("group_id") {
+            for alias in ["group_name", "group"] {
+                if let Some(v) = normalized.get(alias).cloned() {
+                    normalized.insert("group_id".to_string(), v);
+                    break;
+                }
+            }
+        }
+
+        serde_json::Value::Object(normalized)
+    }
+
+    fn canonical_person_type(raw: &str) -> Option<&'static str> {
+        let normalized = raw.trim().to_lowercase();
+        match normalized.as_str() {
+            "student" | "学生" | "stu" => Some("student"),
+            "teacher" | "教师" | "老师" => Some("teacher"),
+            "parent" | "家长" | "guardian" => Some("parent"),
+            _ => None,
+        }
+    }
+
+    fn infer_person_type(params: &CreatePersonParams) -> Option<&'static str> {
+        let has_student_hints = params.student_no.as_ref().is_some_and(|v| !v.trim().is_empty())
+            || params.class_id.as_ref().is_some_and(|v| !v.trim().is_empty())
+            || params.enrollment_date.as_ref().is_some_and(|v| !v.trim().is_empty());
+
+        if has_student_hints {
+            return Some("student");
+        }
+
+        let has_teacher_hints = params.employee_no.as_ref().is_some_and(|v| !v.trim().is_empty())
+            || params.department_id.as_ref().is_some_and(|v| !v.trim().is_empty())
+            || params.title.as_ref().is_some_and(|v| !v.trim().is_empty())
+            || params.hire_date.as_ref().is_some_and(|v| !v.trim().is_empty());
+
+        if has_teacher_hints {
+            return Some("teacher");
+        }
+
+        None
+    }
+
+    fn normalize_person_type(params: &mut CreatePersonParams) {
+        if let Some(canonical) = Self::canonical_person_type(&params.person_type) {
+            params.person_type = canonical.to_string();
+            return;
+        }
+
+        if params.person_type.trim().is_empty() {
+            if let Some(inferred) = Self::infer_person_type(params) {
+                params.person_type = inferred.to_string();
+            }
+        }
+    }
+
     /// 执行AI请求的操作
     pub async fn execute(
         pool: &PgPool,
@@ -647,9 +832,32 @@ impl AIActionExecutor {
     ) -> Result<AIActionResponse, AppError> {
         // 获取用户权限
         let user_permissions = get_user_permissions(pool, user_id).await?;
+
+        if action_req.action_type.trim().is_empty() {
+            return Ok(Self::invalid_input_response(&user_permissions, "操作类型不能为空"));
+        }
+        if Self::exceeds_char_limit(&action_req.action_type, Self::MAX_ACTION_TYPE_LEN) {
+            return Ok(Self::invalid_input_response(
+                &user_permissions,
+                format!("操作类型长度不能超过 {} 个字符", Self::MAX_ACTION_TYPE_LEN),
+            ));
+        }
+        if Self::exceeds_char_limit(&action_req.reason, Self::MAX_REASON_LEN) {
+            return Ok(Self::invalid_input_response(
+                &user_permissions,
+                format!("操作原因长度不能超过 {} 个字符", Self::MAX_REASON_LEN),
+            ));
+        }
+        let params_size = serde_json::to_vec(&action_req.params).map_or(0, |v| v.len());
+        if params_size > Self::MAX_PARAM_JSON_BYTES {
+            return Ok(Self::invalid_input_response(
+                &user_permissions,
+                format!("参数体积过大，不能超过 {} 字节", Self::MAX_PARAM_JSON_BYTES),
+            ));
+        }
         
         // 根据操作类型执行相应操作
-        match action_req.action_type.as_str() {
+        let result = match action_req.action_type.as_str() {
             "create_notice" => {
                 Self::execute_create_notice(pool, &action_req.params, user_id, &user_permissions).await
             }
@@ -669,7 +877,28 @@ impl AIActionExecutor {
                 Self::execute_create_attendance(pool, &action_req.params, &user_permissions).await
             }
             "create_score" => {
-                Self::execute_create_score(pool, &action_req.params, &user_permissions).await
+                let mut normalized = Self::normalize_create_score_value(&action_req.params);
+                if normalized.get("student_id").is_none() && normalized.get("group_id").is_some() {
+                    if let Some(map) = normalized.as_object_mut() {
+                        let score_change = map
+                            .get("score_change")
+                            .and_then(|v| v.as_i64())
+                            .or_else(|| map.get("value").and_then(|v| v.as_i64()))
+                            .unwrap_or(0);
+
+                        map.insert("score_change".to_string(), serde_json::json!(score_change));
+
+                        let reason = map
+                            .get("reason")
+                            .and_then(|v| v.as_str())
+                            .filter(|v| !v.trim().is_empty())
+                            .unwrap_or(action_req.reason.as_str());
+                        map.insert("reason".to_string(), serde_json::json!(reason));
+                    }
+                    Self::execute_update_group_score(pool, &normalized, user_id, &user_permissions).await
+                } else {
+                    Self::execute_create_score(pool, &normalized, &user_permissions).await
+                }
             }
             "create_attendances_batch" => {
                 let items = if !action_req.items.is_empty() {
@@ -697,7 +926,7 @@ impl AIActionExecutor {
                 Self::execute_create_person(pool, &action_req.params, &user_permissions).await
             }
             "create_persons_batch" => {
-                let items = if !action_req.items.is_empty() {
+                let mut items = if !action_req.items.is_empty() {
                     action_req.items.clone()
                 } else {
                     action_req.params.get("items")
@@ -705,6 +934,29 @@ impl AIActionExecutor {
                         .cloned()
                         .unwrap_or_default()
                 };
+
+                if let Some(base) = action_req.params.as_object() {
+                    let mut base_defaults = base.clone();
+                    base_defaults.remove("items");
+                    base_defaults.remove("params");
+
+                    if let Some(nested) = base.get("params").and_then(|v| v.as_object()) {
+                        for (k, v) in nested {
+                            base_defaults.entry(k.clone()).or_insert_with(|| v.clone());
+                        }
+                    }
+
+                    for item in &mut items {
+                        if let Some(item_obj) = item.as_object() {
+                            let mut merged = base_defaults.clone();
+                            for (k, v) in item_obj {
+                                merged.insert(k.clone(), v.clone());
+                            }
+                            *item = serde_json::Value::Object(merged);
+                        }
+                    }
+                }
+
                 Self::execute_create_persons_batch(pool, &items, &user_permissions).await
             }
             _ => {
@@ -717,7 +969,17 @@ impl AIActionExecutor {
                     candidates: None,
                 })
             }
-        }
+        };
+
+        Self::audit_action(
+            user_id,
+            &action_req.action_type,
+            action_req.batch,
+            action_req.items.len(),
+            &result,
+        );
+
+        result
     }
     
     /// 执行创建公告操作
@@ -765,6 +1027,13 @@ impl AIActionExecutor {
                 candidates: None,
             });
         }
+
+        if Self::exceeds_char_limit(&notice_params.title, Self::MAX_NOTICE_TITLE_LEN) {
+            return Ok(Self::invalid_input_response(
+                user_permissions,
+                format!("公告标题长度不能超过 {} 个字符", Self::MAX_NOTICE_TITLE_LEN),
+            ));
+        }
         
         if notice_params.content.trim().is_empty() {
             return Ok(AIActionResponse {
@@ -775,6 +1044,13 @@ impl AIActionExecutor {
                 need_confirmation: false,
                 candidates: None,
             });
+        }
+
+        if Self::exceeds_char_limit(&notice_params.content, Self::MAX_NOTICE_CONTENT_LEN) {
+            return Ok(Self::invalid_input_response(
+                user_permissions,
+                format!("公告内容长度不能超过 {} 个字符", Self::MAX_NOTICE_CONTENT_LEN),
+            ));
         }
         
         // 执行创建
@@ -856,6 +1132,24 @@ impl AIActionExecutor {
                 need_confirmation: false,
                 candidates: None,
             });
+        }
+
+        if Self::exceeds_char_limit(&group_params.name, Self::MAX_GROUP_NAME_LEN) {
+            return Ok(Self::invalid_input_response(
+                user_permissions,
+                format!("小组名称长度不能超过 {} 个字符", Self::MAX_GROUP_NAME_LEN),
+            ));
+        }
+
+        if group_params
+            .description
+            .as_ref()
+            .is_some_and(|v| Self::exceeds_char_limit(v, Self::MAX_GROUP_DESCRIPTION_LEN))
+        {
+            return Ok(Self::invalid_input_response(
+                user_permissions,
+                format!("小组描述长度不能超过 {} 个字符", Self::MAX_GROUP_DESCRIPTION_LEN),
+            ));
         }
         
         // 解析班级ID（支持名称或UUID）
@@ -1346,6 +1640,17 @@ impl AIActionExecutor {
                 });
             }
         };
+
+        if attendance_params
+            .remark
+            .as_ref()
+            .is_some_and(|v| Self::exceeds_char_limit(v, Self::MAX_REMARK_LEN))
+        {
+            return Ok(Self::invalid_input_response(
+                user_permissions,
+                format!("考勤备注长度不能超过 {} 个字符", Self::MAX_REMARK_LEN),
+            ));
+        }
         
         // 解析人员ID（支持名称或UUID）
         let person_id = match NameResolver::resolve_person(pool, &attendance_params.person_id).await? {
@@ -1595,7 +1900,8 @@ impl AIActionExecutor {
         }
 
         // 解析参数
-        let person_params: CreatePersonParams = match serde_json::from_value(params.clone()) {
+        let normalized_params = Self::normalize_create_person_value(params);
+        let mut person_params: CreatePersonParams = match serde_json::from_value(normalized_params) {
             Ok(p) => p,
             Err(e) => {
                 return Ok(AIActionResponse {
@@ -1609,11 +1915,31 @@ impl AIActionExecutor {
             }
         };
 
+        Self::normalize_person_type(&mut person_params);
+
         // 验证必填字段
         if person_params.name.trim().is_empty() {
             return Ok(AIActionResponse {
                 success: false,
                 message: "人员姓名不能为空".to_string(),
+                data: None,
+                user_permissions: user_permissions.to_vec(),
+                need_confirmation: false,
+                candidates: None,
+            });
+        }
+
+        if Self::exceeds_char_limit(&person_params.name, Self::MAX_PERSON_NAME_LEN) {
+            return Ok(Self::invalid_input_response(
+                user_permissions,
+                format!("人员姓名长度不能超过 {} 个字符", Self::MAX_PERSON_NAME_LEN),
+            ));
+        }
+
+        if person_params.person_type.trim().is_empty() {
+            return Ok(AIActionResponse {
+                success: false,
+                message: "缺少人员类型，请提供 type 或 person_type（student/teacher/parent）".to_string(),
                 data: None,
                 user_permissions: user_permissions.to_vec(),
                 need_confirmation: false,
@@ -1843,12 +2169,35 @@ impl AIActionExecutor {
             });
         }
 
+        if items.is_empty() {
+            return Ok(AIActionResponse {
+                success: false,
+                message: "批量创建人员失败: items 不能为空".to_string(),
+                data: None,
+                user_permissions: user_permissions.to_vec(),
+                need_confirmation: false,
+                candidates: None,
+            });
+        }
+
+        if items.len() > Self::MAX_BATCH_ITEMS {
+            return Ok(AIActionResponse {
+                success: false,
+                message: format!("批量创建人员失败: 单次最多支持 {} 条", Self::MAX_BATCH_ITEMS),
+                data: None,
+                user_permissions: user_permissions.to_vec(),
+                need_confirmation: false,
+                candidates: None,
+            });
+        }
+
         let mut success_count = 0;
         let mut failure_count = 0;
         let mut item_results = Vec::new();
 
         for (index, item) in items.iter().enumerate() {
-            let person_params: CreatePersonParams = match serde_json::from_value(item.clone()) {
+            let normalized_item = Self::normalize_create_person_value(item);
+            let mut person_params: CreatePersonParams = match serde_json::from_value(normalized_item) {
                 Ok(p) => p,
                 Err(e) => {
                     failure_count += 1;
@@ -1861,6 +2210,19 @@ impl AIActionExecutor {
                     continue;
                 }
             };
+
+            Self::normalize_person_type(&mut person_params);
+
+            if person_params.person_type.trim().is_empty() {
+                failure_count += 1;
+                item_results.push(BatchItemResult {
+                    success: false,
+                    index,
+                    data: None,
+                    error: Some("缺少人员类型，请提供 type 或 person_type（student/teacher/parent）".to_string()),
+                });
+                continue;
+            }
 
             match Self::create_person_internal(pool, &person_params).await {
                 Ok(person_id) => {
@@ -1910,6 +2272,7 @@ impl AIActionExecutor {
 // ========== 数据库行结构 ==========
 
 #[derive(sqlx::FromRow)]
+#[allow(dead_code)]
 struct NoticeRow {
     id: Uuid,
     title: String,
@@ -1923,6 +2286,7 @@ struct NoticeRow {
 }
 
 #[derive(sqlx::FromRow)]
+#[allow(dead_code)]
 struct GroupRow {
     id: Uuid,
     class_id: Uuid,
@@ -1935,6 +2299,7 @@ struct GroupRow {
 }
 
 #[derive(sqlx::FromRow)]
+#[allow(dead_code)]
 struct ScoreRecordRow {
     id: Uuid,
     score: i32,
@@ -2160,6 +2525,28 @@ impl AIActionExecutor {
                 candidates: None,
             });
         }
+
+        if items.is_empty() {
+            return Ok(AIActionResponse {
+                success: false,
+                message: "批量创建考勤记录失败: items 不能为空".to_string(),
+                data: None,
+                user_permissions: user_permissions.to_vec(),
+                need_confirmation: false,
+                candidates: None,
+            });
+        }
+
+        if items.len() > Self::MAX_BATCH_ITEMS {
+            return Ok(AIActionResponse {
+                success: false,
+                message: format!("批量创建考勤记录失败: 单次最多支持 {} 条", Self::MAX_BATCH_ITEMS),
+                data: None,
+                user_permissions: user_permissions.to_vec(),
+                need_confirmation: false,
+                candidates: None,
+            });
+        }
         
         let mut batch_results = Vec::new();
         let mut success_count = 0;
@@ -2335,6 +2722,28 @@ impl AIActionExecutor {
             return Ok(AIActionResponse {
                 success: false,
                 message: "没有添加个人积分的权限".to_string(),
+                data: None,
+                user_permissions: user_permissions.to_vec(),
+                need_confirmation: false,
+                candidates: None,
+            });
+        }
+
+        if items.is_empty() {
+            return Ok(AIActionResponse {
+                success: false,
+                message: "批量添加积分失败: items 不能为空".to_string(),
+                data: None,
+                user_permissions: user_permissions.to_vec(),
+                need_confirmation: false,
+                candidates: None,
+            });
+        }
+
+        if items.len() > Self::MAX_BATCH_ITEMS {
+            return Ok(AIActionResponse {
+                success: false,
+                message: format!("批量添加积分失败: 单次最多支持 {} 条", Self::MAX_BATCH_ITEMS),
                 data: None,
                 user_permissions: user_permissions.to_vec(),
                 need_confirmation: false,

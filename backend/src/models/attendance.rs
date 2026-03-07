@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow)]
 pub struct Attendance {
     pub id: Uuid,
@@ -12,6 +13,7 @@ pub struct Attendance {
     pub updated_at: chrono::NaiveDateTime,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AttendanceCreate {
     pub person_id: Uuid,
@@ -20,12 +22,14 @@ pub struct AttendanceCreate {
     pub time: Option<chrono::NaiveTime>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AttendanceUpdate {
     pub status: Option<String>,
     pub time: Option<chrono::NaiveTime>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AttendanceResponse {
     pub id: Uuid,

@@ -109,6 +109,21 @@ impl SystemPromptTemplate {
 - 参数：person_id(人员姓名或ID), date(日期,支持:今天/明天/昨天/YYYY-MM-DD), status(状态:出勤/迟到/缺勤/早退/请假或present/late/absent/early_leave/excused), time(时间,支持:现在/上午8点/下午3点/HH:MM), remark(备注,可选)
 - 示例：{"action_type": "create_attendance", "params": {"person_id": "小绿", "date": "今天", "status": "出勤", "time": "上午8点"}, "reason": "记录出勤"}"#);
         }
+
+        if user_permissions.iter().any(|p| p == "person.create" || p == "person.*") {
+            action_descriptions.push(r#"**创建人员** (create_person)
+    - 用途：创建学生/教师/家长
+    - 参数：name(姓名), person_type(人员类型: student/teacher/parent), gender(0/1/2 或 男/女/未知)
+    - 人员类型字段兼容：person_type/type/personType/person_kind/role（建议优先使用person_type）
+    - 学生建议参数：student_no, class_id, enrollment_date
+    - 教师建议参数：employee_no, department_id, title, hire_date
+    - 示例：{"action_type": "create_person", "params": {"name": "张三", "person_type": "student", "gender": 1, "student_no": "S2026001", "class_id": "一年级1班"}, "reason": "新增转学生"}"#);
+
+            action_descriptions.push(r#"**批量创建人员** (create_persons_batch)
+    - 用途：一次创建多名人员
+    - 参数：items(数组，每项与create_person参数一致)
+    - 示例：{"action_type": "create_persons_batch", "params": {"items": [{"name": "李四", "person_type": "student", "gender": 1, "student_no": "S2026002"}, {"name": "王老师", "person_type": "teacher", "gender": 2, "employee_no": "T2026001"}]}, "reason": "新学期人员批量导入"}"#);
+        }
         
         if user_permissions.iter().any(|p| p == "score.create" || p == "score.*") {
             action_descriptions.push(r#"**添加个人积分** (create_score)
@@ -178,6 +193,7 @@ impl SystemPromptTemplate {
 - **日期自动补全**：可以使用"今天"、"明天"、"昨天"等相对日期，系统会自动转换为标准格式
 - **时间自动补全**：可以使用"上午8点"、"下午3点"、"现在"等描述，系统会自动转换
 - **考勤状态**：可以使用中文"出勤"、"迟到"、"缺勤"、"早退"、"请假"，系统会自动转换
+- **安全约束**：批量操作单次最多提交100条，禁止输出明显超大批量请求
 
 ### 2.1 重名处理规则
 当系统返回需要确认的信息时（如找到多个同名人员），表示需要用户选择具体是哪一个：
