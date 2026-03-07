@@ -110,12 +110,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, watch } from 'vue'
 import { ChatLineRound, User, DataLine, Operation } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { aiApi, type ChatMessage, type AIActionRequest, type AIActionResponse } from '../api/ai'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import AIActionExecutor from '../components/AIActionExecutor.vue'
+import { useAIStore } from '../store/ai'
 
 interface Message {
   role: 'user' | 'assistant' | 'system'
@@ -132,15 +133,21 @@ interface QuickQuery {
   query_type: string
 }
 
-const messages = ref<Message[]>([
-  {
-    role: 'assistant',
-    content: '你好！我是学校管理系统的AI助手，可以帮你查询和分析学校数据，并根据你的权限执行相应操作。\n\n**我可以帮你：**\n- 查询班级列表和详情\n- 查询小组信息\n- 查询部门信息\n- 统计分析数据（如：每个部门有多少老师）\n- 获取学校数据概览\n- 根据你的权限执行操作（如创建公告、管理小组等）\n\n你可以直接输入自然语言问题，例如：\n- "帮我统计一下每个部门有多少老师"\n- "查看所有班级信息"\n- "创建一个期中考试通知公告"\n- "给第一小组增加10分"\n\n或者直接点击下方快捷按钮。',
-    isMarkdown: true
-  }
-])
+const defaultWelcomeMessage: Message = {
+  role: 'assistant',
+  content: '你好！我是学校管理系统的AI助手，可以帮你查询和分析学校数据，并根据你的权限执行相应操作。\n\n**我可以帮你：**\n- 查询班级列表和详情\n- 查询小组信息\n- 查询部门信息\n- 统计分析数据（如：每个部门有多少老师）\n- 获取学校数据概览\n- 根据你的权限执行操作（如创建公告、管理小组等）\n\n你可以直接输入自然语言问题，例如：\n- "帮我统计一下每个部门有多少老师"\n- "查看所有班级信息"\n- "创建一个期中考试通知公告"\n- "给第一小组增加10分"\n\n或者直接点击下方快捷按钮。',
+  isMarkdown: true
+}
 
-const inputMessage = ref('')
+const aiStore = useAIStore()
+
+const initialMessages = aiStore.chatMessages.length > 0
+  ? aiStore.chatMessages
+  : [defaultWelcomeMessage]
+
+const messages = ref<Message[]>(initialMessages)
+
+const inputMessage = ref(aiStore.chatInput || '')
 const loading = ref(false)
 const currentQueryType = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
@@ -173,6 +180,14 @@ const loadAvailableActions = async () => {
 
 // 页面加载时获取可用操作
 loadAvailableActions()
+
+watch(messages, (newMessages) => {
+  aiStore.setChatMessages(newMessages)
+}, { deep: true })
+
+watch(inputMessage, (newInput) => {
+  aiStore.setChatInput(newInput)
+})
 
 // 显示操作对话框
 const showActionDialog = (action: AIActionRequest) => {
@@ -207,6 +222,24 @@ const scrollToBottom = async () => {
   }
 }
 
+const pushAssistantSegments = (rawContent: string, queryExecuted = false) => {
+  const parts = rawContent
+    .split('[[AI_SEGMENT]]')
+    .map(part => part.trim())
+    .filter(Boolean)
+
+  const segments = parts.length > 0 ? parts : [rawContent]
+
+  segments.forEach((segment, index) => {
+    messages.value.push({
+      role: 'assistant',
+      content: segment,
+      isMarkdown: true,
+      queryExecuted: queryExecuted && index === 0
+    })
+  })
+}
+
 // 转换消息格式用于API调用
 const getConversationHistory = (): ChatMessage[] => {
   return messages.value
@@ -236,13 +269,8 @@ const sendMessage = async () => {
       message: userMessage,
       conversation_history: getConversationHistory()
     })
-    
-    messages.value.push({
-      role: 'assistant',
-      content: response.data.data,
-      isMarkdown: response.data.query_executed, // 如果执行了查询，使用Markdown渲染
-      queryExecuted: response.data.query_executed
-    })
+
+    pushAssistantSegments(response.data.data, response.data.query_executed)
   } catch (error: any) {
     console.error('Chat error:', error)
     const errorMsg = error.response?.data?.message || '与 AI 对话失败，请稍后重试'
@@ -277,12 +305,7 @@ const executeQuickQuery = async (query: QuickQuery) => {
       conversation_history: getConversationHistory()
     })
 
-    messages.value.push({
-      role: 'assistant',
-      content: response.data.data,
-      isMarkdown: true,
-      queryExecuted: response.data.query_executed
-    })
+    pushAssistantSegments(response.data.data, response.data.query_executed)
   } catch (error: any) {
     console.error('Query error:', error)
     const errorMsg = error.response?.data?.message || '查询失败，请稍后重试'

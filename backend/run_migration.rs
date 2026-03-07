@@ -1,8 +1,63 @@
 use sqlx::PgPool;
 use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+
+fn search_roots() -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
+    let cwd = env::current_dir()?;
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+    Ok(vec![
+        cwd.clone(),
+        cwd.join("backend"),
+        manifest_dir.clone(),
+        manifest_dir.join(".."),
+    ])
+}
+
+/// 解析迁移文件路径，兼容从仓库根目录或 backend 目录启动，并兼容 01/001 命名
+fn resolve_migration_path(filenames: &[&str]) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let roots = search_roots()?;
+    let mut checked_paths = Vec::new();
+
+    for root in roots {
+        for filename in filenames {
+            let path = root.join("migrations").join(filename);
+            checked_paths.push(path.display().to_string());
+            if path.exists() {
+                return Ok(path);
+            }
+        }
+    }
+
+    Err(format!(
+        "无法定位迁移文件，已检查路径:\n{}",
+        checked_paths.join("\n")
+    )
+    .into())
+}
+
+/// 解析模板文件路径，兼容从仓库根目录或 backend 目录启动
+fn resolve_template_path(relative_path: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let roots = search_roots()?;
+    let mut checked_paths = Vec::new();
+
+    for root in roots {
+        let path = root.join(relative_path);
+        checked_paths.push(path.display().to_string());
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+
+    Err(format!(
+        "无法定位模板文件 {}，已检查路径:\n{}",
+        relative_path,
+        checked_paths.join("\n")
+    )
+    .into())
+}
 
 /// 权限模板项
 #[derive(Debug, Deserialize, Serialize)]
@@ -74,15 +129,14 @@ fn split_sql_commands(content: &str) -> Vec<String> {
         current_command.push_str(line);
         current_command.push('\n');
         
-        // 检查是否是 $tag$ 开始
+        // 检查是否是 $tag$ 或 $$ 开始
         if !in_dollar_quote {
-            if let Some(start) = line.find("$") {
-                if let Some(end) = line[start+1..].find("$") {
-                    let tag = &line[start+1..start+1+end];
-                    if !tag.is_empty() && tag.chars().all(|c| c.is_alphanumeric() || c == '_') {
-                        in_dollar_quote = true;
-                        dollar_quote_tag = format!("${}$", tag);
-                    }
+            if let Some(tag) = find_dollar_quote_delimiter(line) {
+                // 若同一行出现偶数次分隔符，说明同一行已闭合，无需进入 dollar quote 模式
+                let occurrences = line.matches(&tag).count();
+                if occurrences % 2 == 1 {
+                    in_dollar_quote = true;
+                    dollar_quote_tag = tag;
                 }
             }
         } else if line.contains(&dollar_quote_tag) {
@@ -111,15 +165,77 @@ fn split_sql_commands(content: &str) -> Vec<String> {
     commands
 }
 
+/// 在一行 SQL 中查找第一个不在单引号字符串里的 dollar-quote 分隔符（如 $$ / $func$）
+fn find_dollar_quote_delimiter(line: &str) -> Option<String> {
+    let bytes = line.as_bytes();
+    let mut i = 0usize;
+    let mut in_single_quote = false;
+
+    while i < bytes.len() {
+        let ch = bytes[i] as char;
+
+        if ch == '\'' {
+            // SQL 单引号转义：''
+            if in_single_quote && i + 1 < bytes.len() && bytes[i + 1] as char == '\'' {
+                i += 2;
+                continue;
+            }
+            in_single_quote = !in_single_quote;
+            i += 1;
+            continue;
+        }
+
+        if !in_single_quote && ch == '$' {
+            let start = i;
+            i += 1;
+
+            // 允许空 tag（即 $$）或字母数字下划线 tag（如 $func$）
+            while i < bytes.len() {
+                let c = bytes[i] as char;
+                if c == '$' {
+                    let tag = &line[start + 1..i];
+                    if tag.is_empty() || tag.chars().all(|t| t.is_ascii_alphanumeric() || t == '_') {
+                        return Some(format!("${}$", tag));
+                    }
+                    break;
+                }
+                if !(c.is_ascii_alphanumeric() || c == '_') {
+                    break;
+                }
+                i += 1;
+            }
+        } else {
+            i += 1;
+        }
+    }
+
+    None
+}
+
+fn is_ignorable_migration_error(err: &sqlx::Error) -> bool {
+    let err_msg = err.to_string();
+    err_msg.contains("already exists")
+        || err_msg.contains("42710") // duplicate object
+        || err_msg.contains("42P07") // duplicate table
+        || err_msg.contains("42P16") // duplicate column
+}
+
 /// 从YAML模板文件加载权限并初始化到数据库
 async fn init_permissions_from_templates(pool: &PgPool) -> Result<(), sqlx::Error> {
     // 定义角色和对应的模板文件
     let roles = vec!["admin", "teacher", "student", "parent"];
     
     for role in roles {
-        let template_path = format!("templates/permissions/{}.yaml", role);
+        let template_relative_path = format!("templates/permissions/{}.yaml", role);
+        let template_path = match resolve_template_path(&template_relative_path) {
+            Ok(path) => path,
+            Err(e) => {
+                eprintln!("警告: 无法定位 {} 权限模板: {}", role, e);
+                continue;
+            }
+        };
         
-        match PermissionTemplate::from_yaml_file(&template_path) {
+        match PermissionTemplate::from_yaml_file(&template_path.to_string_lossy()) {
             Ok(template) => {
                 println!("加载 {} 权限模板: {} 个权限", role, template.permissions.len());
                 
@@ -165,37 +281,28 @@ async fn init_permissions_from_templates(pool: &PgPool) -> Result<(), sqlx::Erro
 }
 
 /// 运行基础迁移
-async fn run_basic_migration(pool: &PgPool) -> Result<(), sqlx::Error> {
+async fn run_basic_migration(pool: &PgPool) -> Result<(), Box<dyn std::error::Error>> {
     // 读取迁移文件
-    let migration_content = fs::read_to_string("migrations/001_initial_schema.sql").expect("无法读取迁移文件");
+    let migration_path = resolve_migration_path(&["001_initial_schema.sql"])?;
+    println!("使用迁移文件: {}", migration_path.display());
+    let migration_content = fs::read_to_string(&migration_path)?;
     
-    // 拆分成单独的 SQL 命令并执行
-    let mut commands = Vec::new();
-    let mut current_command = String::new();
-    
-    for line in migration_content.lines() {
-        let trimmed_line = line.trim();
-        
-        // 跳过注释行
-        if trimmed_line.starts_with("--") || trimmed_line.is_empty() {
-            continue;
-        }
-        
-        // 添加当前行到命令
-        current_command.push_str(line);
-        current_command.push(' ');
-        
-        // 如果行以分号结尾，说明这是一个完整的命令
-        if trimmed_line.ends_with(';') {
-            commands.push(current_command.trim().to_string());
-            current_command.clear();
-        }
-    }
+    // 拆分成单独的 SQL 命令并执行（支持 dollar-quote）
+    let commands = split_sql_commands(&migration_content);
     
     // 执行所有命令
     for command in &commands {
         println!("执行 SQL: {}", command);
-        sqlx::query(command).execute(pool).await?;
+        match sqlx::query(command).execute(pool).await {
+            Ok(_) => {}
+            Err(e) => {
+                if is_ignorable_migration_error(&e) {
+                    println!("警告: SQL对象已存在，跳过: {}", e);
+                } else {
+                    return Err(Box::new(e));
+                }
+            }
+        }
     }
     
     println!("数据库迁移成功!");
@@ -206,31 +313,13 @@ async fn run_basic_migration(pool: &PgPool) -> Result<(), sqlx::Error> {
 /// 运行权限迁移
 async fn run_permission_migration(pool: &PgPool) -> Result<(), sqlx::Error> {
     // 读取权限迁移文件
-    let migration_content = fs::read_to_string("migrations/001_initial_schema.sql")
-        .expect("无法读取权限迁移文件");
+    let migration_path = resolve_migration_path(&["001_initial_schema.sql"])
+        .map_err(|e| sqlx::Error::Io(std::io::Error::new(std::io::ErrorKind::NotFound, e.to_string())))?;
+    println!("使用权限迁移文件: {}", migration_path.display());
+    let migration_content = fs::read_to_string(&migration_path)?;
     
-    // 拆分成单独的 SQL 命令并执行
-    let mut commands = Vec::new();
-    let mut current_command = String::new();
-    
-    for line in migration_content.lines() {
-        let trimmed_line = line.trim();
-        
-        // 跳过注释行
-        if trimmed_line.starts_with("--") || trimmed_line.is_empty() {
-            continue;
-        }
-        
-        // 添加当前行到命令
-        current_command.push_str(line);
-        current_command.push(' ');
-        
-        // 如果行以分号结尾，说明这是一个完整的命令
-        if trimmed_line.ends_with(';') {
-            commands.push(current_command.trim().to_string());
-            current_command.clear();
-        }
-    }
+    // 拆分成单独的 SQL 命令并执行（支持 dollar-quote）
+    let commands = split_sql_commands(&migration_content);
     
     // 执行所有命令
     for command in &commands {
@@ -489,10 +578,10 @@ async fn run_all_migrations(pool: &PgPool) -> Result<(), Box<dyn std::error::Err
     
     // 定义所有迁移文件（按顺序）
     let migrations = vec![
-        (1, "001_initial_schema.sql", "initial schema with all tables and data"),
+        (1, vec!["001_initial_schema.sql"], "initial schema with all tables and data"),
     ];
     
-    for (version, filename, description) in migrations {
+    for (version, filenames, description) in migrations {
         // 检查迁移是否已经执行
         let already_executed: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM _sqlx_migrations WHERE version = $1 AND success = true)"
@@ -506,18 +595,24 @@ async fn run_all_migrations(pool: &PgPool) -> Result<(), Box<dyn std::error::Err
             continue;
         }
         
-        let filepath = format!("migrations/{}", filename);
-        let path = Path::new(&filepath);
-        
-        if !path.exists() {
-            println!("警告: 迁移文件 {} 不存在，跳过", filepath);
+        let migration_path = match resolve_migration_path(&filenames) {
+            Ok(path) => path,
+            Err(_) => {
+                println!("警告: 迁移文件 {:?} 不存在，跳过", filenames);
+                continue;
+            }
+        };
+
+        if !migration_path.exists() {
+            println!("警告: 迁移文件 {} 不存在，跳过", migration_path.display());
             continue;
         }
         
         println!("执行迁移 {}: {}", version, description);
+        println!("  文件路径: {}", migration_path.display());
         
         // 读取迁移文件
-        let migration_content = fs::read_to_string(&filepath)?;
+        let migration_content = fs::read_to_string(&migration_path)?;
         
         // 拆分SQL命令
         let commands = split_sql_commands(&migration_content);

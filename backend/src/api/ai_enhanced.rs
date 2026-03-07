@@ -776,9 +776,15 @@ pub async fn enhanced_chat(
                                         .first()
                                         .map(|choice| AIResponseParser::clean_response(&choice.message.content))
                                         .unwrap_or_else(|| action_result.message.clone());
+
+                                    let segmented_content = format!(
+                                        "[[AI_SEGMENT]]✅ 操作已执行：{}\n[[AI_SEGMENT]]{}",
+                                        action_result.message,
+                                        final_content
+                                    );
                                     
                                     return Ok(Json(EnhancedChatResponse {
-                                        data: final_content,
+                                        data: segmented_content,
                                         query_executed: true,
                                         query_type: Some(action_req.action_type),
                                     }));
@@ -786,7 +792,7 @@ pub async fn enhanced_chat(
                                 
                                 // 如果第二次请求失败，直接返回操作结果
                                 Ok(Json(EnhancedChatResponse {
-                                    data: action_result.message,
+                                    data: format!("[[AI_SEGMENT]]✅ 操作已执行：{}", action_result.message),
                                     query_executed: true,
                                     query_type: Some(action_req.action_type),
                                 }))

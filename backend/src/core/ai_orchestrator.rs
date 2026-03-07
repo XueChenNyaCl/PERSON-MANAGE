@@ -63,6 +63,8 @@ impl AIOrchestrator {
             action_type: format!("{:?}", step.action.action_type).to_lowercase(),
             params: step.action.params.clone(),
             reason: step.action.reason.clone(),
+            batch: step.action.batch,
+            items: step.action.items.clone(),
         };
         AIActionExecutor::execute(pool, &api_action, user_id, user_name).await
     }

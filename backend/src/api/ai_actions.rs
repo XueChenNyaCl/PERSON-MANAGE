@@ -17,9 +17,20 @@ pub struct AIActionRequest {
     /// 操作类型
     pub action_type: String,
     /// 操作参数
+    #[serde(default = "default_action_params")]
     pub params: serde_json::Value,
     /// 操作原因/说明
     pub reason: String,
+    /// 是否批量（兼容AI返回）
+    #[serde(default)]
+    pub batch: bool,
+    /// 批量项目（兼容AI返回顶层items）
+    #[serde(default)]
+    pub items: Vec<serde_json::Value>,
+}
+
+fn default_action_params() -> serde_json::Value {
+    serde_json::json!({})
 }
 
 /// AI 操作响应
@@ -100,6 +111,7 @@ pub struct CreateAttendanceParams {
 /// 创建个人积分记录参数
 #[derive(Debug, Deserialize)]
 pub struct CreateScoreParams {
+    #[serde(alias = "person_id")]
     pub student_id: String,
     pub reason: String,
     pub value: i32,
@@ -109,6 +121,7 @@ pub struct CreateScoreParams {
 #[derive(Debug, Deserialize)]
 pub struct CreatePersonParams {
     pub name: String,
+    #[serde(alias = "type")]
     pub person_type: String,  // student, teacher, parent
     #[serde(deserialize_with = "deserialize_gender")]
     pub gender: i16,  // 0: 未知, 1: 男, 2: 女
@@ -659,27 +672,39 @@ impl AIActionExecutor {
                 Self::execute_create_score(pool, &action_req.params, &user_permissions).await
             }
             "create_attendances_batch" => {
-                let items = action_req.params.get("items")
-                    .and_then(|v| v.as_array())
-                    .cloned()
-                    .unwrap_or_default();
+                let items = if !action_req.items.is_empty() {
+                    action_req.items.clone()
+                } else {
+                    action_req.params.get("items")
+                        .and_then(|v| v.as_array())
+                        .cloned()
+                        .unwrap_or_default()
+                };
                 Self::execute_create_attendances_batch(pool, &items, &user_permissions).await
             }
             "create_scores_batch" => {
-                let items = action_req.params.get("items")
-                    .and_then(|v| v.as_array())
-                    .cloned()
-                    .unwrap_or_default();
+                let items = if !action_req.items.is_empty() {
+                    action_req.items.clone()
+                } else {
+                    action_req.params.get("items")
+                        .and_then(|v| v.as_array())
+                        .cloned()
+                        .unwrap_or_default()
+                };
                 Self::execute_create_scores_batch(pool, &items, &user_permissions).await
             }
             "create_person" => {
                 Self::execute_create_person(pool, &action_req.params, &user_permissions).await
             }
             "create_persons_batch" => {
-                let items = action_req.params.get("items")
-                    .and_then(|v| v.as_array())
-                    .cloned()
-                    .unwrap_or_default();
+                let items = if !action_req.items.is_empty() {
+                    action_req.items.clone()
+                } else {
+                    action_req.params.get("items")
+                        .and_then(|v| v.as_array())
+                        .cloned()
+                        .unwrap_or_default()
+                };
                 Self::execute_create_persons_batch(pool, &items, &user_permissions).await
             }
             _ => {
