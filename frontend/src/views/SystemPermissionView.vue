@@ -461,9 +461,9 @@ const handleImportYaml = () => {
 
 const handleYamlFileChange = (file: any) => {
   const reader = new FileReader()
-  reader.onload = (e) => {
+  reader.addEventListener('load', (e) => {
     yamlContent.value = e.target?.result as string
-  }
+  })
   reader.readAsText(file.raw)
 }
 

@@ -103,13 +103,12 @@ pub async fn login(
     
     // 3. 验证密码
     println!("验证密码: username={}, password_length={}", login_req.username, login_req.password.len());
-    let password_valid;
     // 临时：允许admin用户使用密码"admin"登录
-    if login_req.username == "admin" && login_req.password == "admin" {
+    let password_valid = if login_req.username == "admin" && login_req.password == "admin" {
         println!("使用临时密码绕过admin登录");
-        password_valid = true;
+        true
     } else {
-        password_valid = match verify_password(&login_req.password, &user.password_hash) {
+        match verify_password(&login_req.password, &user.password_hash) {
             Ok(valid) => {
                 println!("密码验证结果: {}", valid);
                 valid
@@ -118,8 +117,8 @@ pub async fn login(
                 println!("密码验证错误: {}", e);
                 return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
             }
-        };
-    }
+        }
+    };
     
     if !password_valid {
         println!("错误: 密码不正确");
@@ -267,6 +266,7 @@ pub async fn login(
 }
 
 // 获取用户权限函数 - 从YAML模板文件加载
+#[allow(dead_code)]
 pub fn get_user_permissions(role: &str) -> Vec<String> {
     // 尝试从YAML模板文件加载权限
     let template_path = format!("templates/permissions/{}.yaml", role);

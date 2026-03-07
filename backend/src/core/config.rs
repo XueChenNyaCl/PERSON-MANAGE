@@ -6,10 +6,14 @@ use std::env;
 pub struct Config {
     pub database_url: String,
     pub jwt_secret: String,
+    #[allow(dead_code)]
     pub jwt_expires_in: String,
+    #[allow(dead_code)]
     pub server_host: String,
     pub server_port: u16,
+    #[allow(dead_code)]
     pub ws_path: String,
+    #[allow(dead_code)]
     pub plugin_dir: String,
 }
 

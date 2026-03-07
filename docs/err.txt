@@ -1,36 +1,53 @@
-[DashboardView] onMounted called
-DashboardView.vue:1021 [DashboardView] authStore.isAuthenticated: true
-DashboardView.vue:1022 [DashboardView] userRole: teacher
-DashboardView.vue:1023 [DashboardView] authStore.user: Proxy(Object) {id: '14756a55-f43b-4d2c-92ec-ca6623afe1b6', username: '951112', role: 'teacher', name: '李先生', email: ''}
-DashboardView.vue:1032 [DashboardView] Loading dashboard data
-DashboardView.vue:968 [DashboardView] loadDashboardData called, userRole: teacher
-DashboardView.vue:972 [DashboardView] Fetching teacher data
-DashboardView.vue:698 [DashboardView] fetchTeacherData called
-DashboardView.vue:699 [DashboardView] Teacher user ID: 14756a55-f43b-4d2c-92ec-ca6623afe1b6
-DashboardView.vue:704 [DashboardView] Calling personApi.getTeacherClasses with teacher ID: 14756a55-f43b-4d2c-92ec-ca6623afe1b6
-DashboardView.vue:708 [DashboardView] Teacher classes response: {data: Array(1), status: 200, statusText: 'OK', headers: AxiosHeaders, config: {…}, …}
-DashboardView.vue:709 [DashboardView] Teacher classes data: [{…}]
-DashboardView.vue:717 [DashboardView] Teacher class IDs: ['4bee8023-4c1b-4135-ad3d-80438e65fc86']
-DashboardView.vue:729 [DashboardView] 获取班级学生, classId: 4bee8023-4c1b-4135-ad3d-80438e65fc86
-person.ts:141 XHR 已完成加载:GET "http://localhost:3001/api/permission/teacher/classes?teacher_id=14756a55-f43b-4d2c-92ec-ca6623afe1b6"。
+HR 加载失败:POST "http://localhost:3001/api/ai/context".
 dispatchXhrRequest @ xhr.js:198
 xhr @ xhr.js:15
 dispatchRequest @ dispatchRequest.js:51
 Promise.then
 _request @ Axios.js:172
 request @ Axios.js:41
-Axios.<computed> @ Axios.js:220
+httpMethod @ Axios.js:233
 wrap @ bind.js:12
-getTeacherClasses @ person.ts:141
-fetchTeacherData @ DashboardView.vue:707
-loadDashboardData @ DashboardView.vue:973
-(匿名) @ DashboardView.vue:1034
-(匿名) @ runtime-core.esm-bundler.js:3080
+getPageContext @ ai.ts:242
+getContext @ usePageContext.ts:39
+fetchSuggestion @ AIAssistant.vue:34
+watch.immediate @ AIAssistant.vue:60
 callWithErrorHandling @ runtime-core.esm-bundler.js:199
 callWithAsyncErrorHandling @ runtime-core.esm-bundler.js:206
-hook.__weh.hook.__weh @ runtime-core.esm-bundler.js:3060
-flushPostFlushCbs @ runtime-core.esm-bundler.js:385
-flushJobs @ runtime-core.esm-bundler.js:427
+baseWatchOptions.call @ runtime-core.esm-bundler.js:880
+job @ reactivity.esm-bundler.js:1901
+watch @ reactivity.esm-bundler.js:1936
+doWatch @ runtime-core.esm-bundler.js:908
+watch2 @ runtime-core.esm-bundler.js:841
+setup @ AIAssistant.vue:59
+callWithErrorHandling @ runtime-core.esm-bundler.js:199
+setupStatefulComponent @ runtime-core.esm-bundler.js:8061
+setupComponent @ runtime-core.esm-bundler.js:8023
+mountComponent @ runtime-core.esm-bundler.js:5963
+processComponent @ runtime-core.esm-bundler.js:5929
+patch @ runtime-core.esm-bundler.js:5435
+mountChildren @ runtime-core.esm-bundler.js:5679
+mountElement @ runtime-core.esm-bundler.js:5602
+processElement @ runtime-core.esm-bundler.js:5557
+patch @ runtime-core.esm-bundler.js:5423
+mountChildren @ runtime-core.esm-bundler.js:5679
+mountElement @ runtime-core.esm-bundler.js:5602
+processElement @ runtime-core.esm-bundler.js:5557
+patch @ runtime-core.esm-bundler.js:5423
+mountChildren @ runtime-core.esm-bundler.js:5679
+mountElement @ runtime-core.esm-bundler.js:5602
+processElement @ runtime-core.esm-bundler.js:5557
+patch @ runtime-core.esm-bundler.js:5423
+componentUpdateFn @ runtime-core.esm-bundler.js:6074
+run @ reactivity.esm-bundler.js:239
+setupRenderEffect @ runtime-core.esm-bundler.js:6202
+mountComponent @ runtime-core.esm-bundler.js:5977
+processComponent @ runtime-core.esm-bundler.js:5929
+patch @ runtime-core.esm-bundler.js:5435
+componentUpdateFn @ runtime-core.esm-bundler.js:6154
+run @ reactivity.esm-bundler.js:239
+runIfDirty @ reactivity.esm-bundler.js:277
+callWithErrorHandling @ runtime-core.esm-bundler.js:199
+flushJobs @ runtime-core.esm-bundler.js:408
 Promise.then
 queueFlush @ runtime-core.esm-bundler.js:322
 queuePostFlushCb @ runtime-core.esm-bundler.js:336
@@ -50,22 +67,93 @@ push @ vue-router.mjs:1257
 install @ vue-router.mjs:1504
 use @ runtime-core.esm-bundler.js:4127
 (匿名) @ main.ts:13
-DashboardView.vue:736 [DashboardView] 班级学生响应, classId: 4bee8023-4c1b-4135-ad3d-80438e65fc86 total: 4
-DashboardView.vue:744 [DashboardView] 总学生数: 4
-DashboardView.vue:753 [DashboardView] Fetching attendance for class ID: 4bee8023-4c1b-4135-ad3d-80438e65fc86 date: 2026-03-06
-DashboardView.vue:760 [DashboardView] Attendance response for class 4bee8023-4c1b-4135-ad3d-80438e65fc86 : {items: Array(0), total: 0, page: 1, limit: 1000}
-DashboardView.vue:761 [DashboardView] Attendance items count: 0
-DashboardView.vue:771 [DashboardView] Total attendance data: []length: 0[[Prototype]]: Array(0)at: ƒ at()concat: ƒ concat()constructor: ƒ Array()copyWithin: ƒ copyWithin()entries: ƒ entries()every: ƒ every()fill: ƒ fill()filter: ƒ filter()find: ƒ find()findIndex: ƒ findIndex()findLast: ƒ findLast()findLastIndex: ƒ findLastIndex()flat: ƒ flat()flatMap: ƒ flatMap()forEach: ƒ forEach()includes: ƒ includes()indexOf: ƒ indexOf()join: ƒ join()keys: ƒ keys()lastIndexOf: ƒ lastIndexOf()length: 0map: ƒ map()pop: ƒ pop()push: ƒ push()reduce: ƒ reduce()reduceRight: ƒ reduceRight()reverse: ƒ reverse()shift: ƒ shift()slice: ƒ slice()some: ƒ some()sort: ƒ sort()splice: ƒ splice()toLocaleString: ƒ toLocaleString()toReversed: ƒ toReversed()toSorted: ƒ toSorted()toSpliced: ƒ toSpliced()toString: ƒ toString()unshift: ƒ unshift()values: ƒ values()with: ƒ with()Symbol(Symbol.iterator): ƒ values()Symbol(Symbol.unscopables): {at: true, copyWithin: true, entries: true, fill: true, find: true, …}[[Prototype]]: Object
-DashboardView.vue:772 [DashboardView] Total attendance count: 0
-DashboardView.vue:780 [DashboardView] 考勤统计结果:
-DashboardView.vue:781 [DashboardView] 总考勤记录: 0
-DashboardView.vue:782 [DashboardView] 正常出勤: 0
-DashboardView.vue:783 [DashboardView] 迟到: 0
-DashboardView.vue:784 [DashboardView] 缺勤: 0
-DashboardView.vue:785 [DashboardView] 早退: 0
-DashboardView.vue:791 [DashboardView] fetchTeacherData completed, loading set to false
-DashboardView.vue:984 [DashboardView] loadDashboardData completed
-person.ts:116 XHR 已完成加载:GET "http://localhost:3001/api/persons?page=1&limit=1000&type=student&class_id=4bee8023-4c1b-4135-ad3d-80438e65fc86"。
+ai.ts:237 XHR 加载失败:GET "http://localhost:3001/api/ai/actions/available".
+dispatchXhrRequest @ xhr.js:198
+xhr @ xhr.js:15
+dispatchRequest @ dispatchRequest.js:51
+Promise.then
+_request @ Axios.js:172
+request @ Axios.js:41
+Axios.<computed> @ Axios.js:220
+wrap @ bind.js:12
+getAvailableActions @ ai.ts:237
+loadAvailableActions @ AIView.vue:166
+setup @ AIView.vue:175
+callWithErrorHandling @ runtime-core.esm-bundler.js:199
+setupStatefulComponent @ runtime-core.esm-bundler.js:8061
+setupComponent @ runtime-core.esm-bundler.js:8023
+mountComponent @ runtime-core.esm-bundler.js:5963
+processComponent @ runtime-core.esm-bundler.js:5929
+patch @ runtime-core.esm-bundler.js:5435
+componentUpdateFn @ runtime-core.esm-bundler.js:6074
+run @ reactivity.esm-bundler.js:239
+setupRenderEffect @ runtime-core.esm-bundler.js:6202
+mountComponent @ runtime-core.esm-bundler.js:5977
+processComponent @ runtime-core.esm-bundler.js:5929
+patch @ runtime-core.esm-bundler.js:5435
+mountChildren @ runtime-core.esm-bundler.js:5679
+processFragment @ runtime-core.esm-bundler.js:5859
+patch @ runtime-core.esm-bundler.js:5409
+mountChildren @ runtime-core.esm-bundler.js:5679
+processFragment @ runtime-core.esm-bundler.js:5859
+patch @ runtime-core.esm-bundler.js:5409
+mountChildren @ runtime-core.esm-bundler.js:5679
+mountElement @ runtime-core.esm-bundler.js:5602
+processElement @ runtime-core.esm-bundler.js:5557
+patch @ runtime-core.esm-bundler.js:5423
+mountChildren @ runtime-core.esm-bundler.js:5679
+mountElement @ runtime-core.esm-bundler.js:5602
+processElement @ runtime-core.esm-bundler.js:5557
+patch @ runtime-core.esm-bundler.js:5423
+componentUpdateFn @ runtime-core.esm-bundler.js:6074
+run @ reactivity.esm-bundler.js:239
+setupRenderEffect @ runtime-core.esm-bundler.js:6202
+mountComponent @ runtime-core.esm-bundler.js:5977
+processComponent @ runtime-core.esm-bundler.js:5929
+patch @ runtime-core.esm-bundler.js:5435
+mountChildren @ runtime-core.esm-bundler.js:5679
+mountElement @ runtime-core.esm-bundler.js:5602
+processElement @ runtime-core.esm-bundler.js:5557
+patch @ runtime-core.esm-bundler.js:5423
+mountChildren @ runtime-core.esm-bundler.js:5679
+mountElement @ runtime-core.esm-bundler.js:5602
+processElement @ runtime-core.esm-bundler.js:5557
+patch @ runtime-core.esm-bundler.js:5423
+mountChildren @ runtime-core.esm-bundler.js:5679
+mountElement @ runtime-core.esm-bundler.js:5602
+processElement @ runtime-core.esm-bundler.js:5557
+patch @ runtime-core.esm-bundler.js:5423
+componentUpdateFn @ runtime-core.esm-bundler.js:6074
+run @ reactivity.esm-bundler.js:239
+setupRenderEffect @ runtime-core.esm-bundler.js:6202
+mountComponent @ runtime-core.esm-bundler.js:5977
+processComponent @ runtime-core.esm-bundler.js:5929
+patch @ runtime-core.esm-bundler.js:5435
+componentUpdateFn @ runtime-core.esm-bundler.js:6154
+run @ reactivity.esm-bundler.js:239
+runIfDirty @ reactivity.esm-bundler.js:277
+callWithErrorHandling @ runtime-core.esm-bundler.js:199
+flushJobs @ runtime-core.esm-bundler.js:408
+Promise.then
+queueFlush @ runtime-core.esm-bundler.js:322
+queuePostFlushCb @ runtime-core.esm-bundler.js:336
+queueEffectWithSuspense @ runtime-core.esm-bundler.js:7475
+baseWatchOptions.scheduler @ runtime-core.esm-bundler.js:884
+effect2.scheduler @ reactivity.esm-bundler.js:1917
+trigger @ reactivity.esm-bundler.js:267
+endBatch @ reactivity.esm-bundler.js:325
+notify @ reactivity.esm-bundler.js:616
+trigger @ reactivity.esm-bundler.js:590
+set value @ reactivity.esm-bundler.js:1514
+finalizeNavigation @ vue-router.mjs:1388
+(匿名) @ vue-router.mjs:1316
+Promise.then
+pushWithRedirect @ vue-router.mjs:1304
+push @ vue-router.mjs:1257
+install @ vue-router.mjs:1504
+use @ runtime-core.esm-bundler.js:4127
+(匿名) @ main.ts:13
+person.ts:116 XHR 加载失败:GET "http://localhost:3001/api/persons?page=1&limit=1000".
 dispatchXhrRequest @ xhr.js:198
 xhr @ xhr.js:15
 dispatchRequest @ dispatchRequest.js:51
@@ -75,10 +163,9 @@ request @ Axios.js:41
 Axios.<computed> @ Axios.js:220
 wrap @ bind.js:12
 list @ person.ts:116
-fetchTeacherData @ DashboardView.vue:730
-await in fetchTeacherData
-loadDashboardData @ DashboardView.vue:973
-(匿名) @ DashboardView.vue:1034
+fetchAdminData @ DashboardView.vue:959
+loadDashboardData @ DashboardView.vue:1065
+(匿名) @ DashboardView.vue:1118
 (匿名) @ runtime-core.esm-bundler.js:3080
 callWithErrorHandling @ runtime-core.esm-bundler.js:199
 callWithAsyncErrorHandling @ runtime-core.esm-bundler.js:206
@@ -104,42 +191,19 @@ push @ vue-router.mjs:1257
 install @ vue-router.mjs:1504
 use @ runtime-core.esm-bundler.js:4127
 (匿名) @ main.ts:13
-attendance.ts:51 XHR 已完成加载:GET "http://localhost:3001/api/attendances?page=1&limit=1000&date=2026-03-06&class_id=4bee8023-4c1b-4135-ad3d-80438e65fc86"。
+3ai.ts:225 XHR 已完成加载:POST "http://localhost:3001/api/ai/enhanced-chat"。
 dispatchXhrRequest @ xhr.js:198
 xhr @ xhr.js:15
 dispatchRequest @ dispatchRequest.js:51
 Promise.then
 _request @ Axios.js:172
 request @ Axios.js:41
-Axios.<computed> @ Axios.js:220
+httpMethod @ Axios.js:233
 wrap @ bind.js:12
-list @ attendance.ts:51
-fetchTeacherData @ DashboardView.vue:754
-await in fetchTeacherData
-loadDashboardData @ DashboardView.vue:973
-(匿名) @ DashboardView.vue:1034
-(匿名) @ runtime-core.esm-bundler.js:3080
+enhancedChat @ ai.ts:225
+sendMessage @ AIView.vue:235
+await in sendMessage
+(匿名) @ runtime-dom.esm-bundler.js:1805
 callWithErrorHandling @ runtime-core.esm-bundler.js:199
 callWithAsyncErrorHandling @ runtime-core.esm-bundler.js:206
-hook.__weh.hook.__weh @ runtime-core.esm-bundler.js:3060
-flushPostFlushCbs @ runtime-core.esm-bundler.js:385
-flushJobs @ runtime-core.esm-bundler.js:427
-Promise.then
-queueFlush @ runtime-core.esm-bundler.js:322
-queuePostFlushCb @ runtime-core.esm-bundler.js:336
-queueEffectWithSuspense @ runtime-core.esm-bundler.js:7475
-baseWatchOptions.scheduler @ runtime-core.esm-bundler.js:884
-effect2.scheduler @ reactivity.esm-bundler.js:1917
-trigger @ reactivity.esm-bundler.js:267
-endBatch @ reactivity.esm-bundler.js:325
-notify @ reactivity.esm-bundler.js:616
-trigger @ reactivity.esm-bundler.js:590
-set value @ reactivity.esm-bundler.js:1514
-finalizeNavigation @ vue-router.mjs:1388
-(匿名) @ vue-router.mjs:1316
-Promise.then
-pushWithRedirect @ vue-router.mjs:1304
-push @ vue-router.mjs:1257
-install @ vue-router.mjs:1504
-use @ runtime-core.esm-bundler.js:4127
-(匿名) @ main.ts:13
+invoker @ runtime-dom.esm-bundler.js:730

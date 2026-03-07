@@ -1,3 +1,4 @@
+pub mod ai_action;
 pub mod attendance;
 pub mod class;
 pub mod department;

@@ -127,7 +127,7 @@ pub async fn list(
     let total: i64 = count_query
         .fetch_one(&pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
     
     // 查询数据
     let sql = format!(
@@ -163,7 +163,7 @@ pub async fn list(
         .bind(offset)
         .fetch_all(&pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
     
     let items: Vec<AttendanceResponse> = attendances.into_iter().map(|row| row.into()).collect();
     
@@ -242,7 +242,7 @@ pub async fn create(
     .bind(user_id)
     .fetch_one(&pool)
     .await
-    .map_err(|e| AppError::Database(e))?;
+    .map_err(AppError::Database)?;
     
     Ok(Json(row.into()))
 }
@@ -262,7 +262,7 @@ pub async fn get(
     .bind(id)
     .fetch_optional(&pool)
     .await
-    .map_err(|e| AppError::Database(e))?
+    .map_err(AppError::Database)?
     .ok_or(AppError::NotFound)?;
     
     Ok(Json(row.into()))
@@ -332,7 +332,7 @@ pub async fn update(
         .bind(id)
         .fetch_optional(&pool)
         .await
-        .map_err(|e| AppError::Database(e))?
+        .map_err(AppError::Database)?
         .ok_or(AppError::NotFound)?;
     
     Ok(Json(row.into()))
@@ -354,7 +354,7 @@ pub async fn delete(
         .bind(id)
         .execute(&pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
     
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound);

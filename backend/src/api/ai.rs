@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 use reqwest::Client;
+use std::time::Duration;
 
 use crate::api::routes::AppState;
 use crate::core::auth::Claims;
@@ -124,7 +125,9 @@ pub struct AIChatRequest {
 #[derive(Debug, Deserialize)]
 pub struct AIChatResponseChoice {
     pub message: AIChatMessage,
+    #[allow(dead_code)]
     pub finish_reason: Option<String>,
+    #[allow(dead_code)]
     pub index: i32,
 }
 
@@ -218,8 +221,11 @@ pub async fn chat(
         stream: false,
     };
     
-    // 调用 AI API
-    let client = Client::new();
+    // 调用 AI API（设置30秒超时）
+    let client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| AppError::InternalWithMessage(format!("创建HTTP客户端失败: {}", e)))?;
     
     // 构建完整的 API 端点 URL
     let mut api_url = settings.api_base_url.clone();
@@ -255,7 +261,7 @@ pub async fn chat(
     // 提取回复内容
     let reply = api_response.choices
         .first()
-        .and_then(|choice| Some(choice.message.content.clone()))
+        .map(|choice| choice.message.content.clone())
         .unwrap_or_else(|| "AI 没有返回有效回复".to_string());
     
     Ok(Json(ChatResponse {
@@ -297,11 +303,10 @@ pub async fn list_identities(
 }
 
 pub async fn create_identity(
-    State(state): State<AppState>,
-    Extension(claims): Extension<Claims>,
+    State(_state): State<AppState>,
+    Extension(_claims): Extension<Claims>,
     Json(req): Json<CreateIdentityRequest>,
 ) -> Result<Json<AIIdentity>, AppError> {
-    let pool = state.pool.ok_or_else(|| AppError::Internal)?;
     
     // 检查是否为管理员 - 暂时禁用用于调试
     // check_admin(&claims, &pool).await?;
@@ -323,12 +328,11 @@ pub async fn create_identity(
 }
 
 pub async fn update_identity(
-    State(state): State<AppState>,
-    Extension(claims): Extension<Claims>,
+    State(_state): State<AppState>,
+    Extension(_claims): Extension<Claims>,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateIdentityRequest>,
 ) -> Result<Json<AIIdentity>, AppError> {
-    let pool = state.pool.ok_or_else(|| AppError::Internal)?;
     
     // 检查是否为管理员 - 暂时禁用用于调试
     // check_admin(&claims, &pool).await?;
@@ -368,11 +372,10 @@ pub async fn update_identity(
 }
 
 pub async fn delete_identity(
-    State(state): State<AppState>,
-    Extension(claims): Extension<Claims>,
+    State(_state): State<AppState>,
+    Extension(_claims): Extension<Claims>,
     Path(_id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let pool = state.pool.ok_or_else(|| AppError::Internal)?;
     
     // 检查是否为管理员 - 暂时禁用用于调试
     // check_admin(&claims, &pool).await?;
@@ -387,7 +390,7 @@ pub async fn delete_identity(
 
 pub async fn get_settings(
     State(state): State<AppState>,
-    Extension(claims): Extension<Claims>,
+    Extension(_claims): Extension<Claims>,
 ) -> Result<Json<AISettings>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
     

@@ -24,6 +24,20 @@
                 已自动查询数据
               </el-tag>
             </div>
+            <div v-if="message.actionPending" class="action-indicator">
+              <el-tag size="small" type="warning">
+                <el-icon><Operation /></el-icon>
+                待执行操作
+              </el-tag>
+              <el-button
+                v-if="message.pendingAction"
+                size="small"
+                type="primary"
+                @click="showActionDialog(message.pendingAction)"
+              >
+                查看详情
+              </el-button>
+            </div>
             <MarkdownRenderer v-if="message.isMarkdown" :content="message.content" />
             <template v-else>{{ message.content }}</template>
           </div>
@@ -84,21 +98,32 @@
         </div>
       </div>
     </div>
+
+    <!-- AI操作执行对话框 -->
+    <AIActionExecutor
+      v-model="actionDialogVisible"
+      :action-data="pendingActionData"
+      @success="handleActionSuccess"
+      @error="handleActionError"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
-import { ChatLineRound, User, DataLine } from '@element-plus/icons-vue'
+import { ChatLineRound, User, DataLine, Operation } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { aiApi, type ChatMessage } from '../api/ai'
+import { aiApi, type ChatMessage, type AIActionRequest, type AIActionResponse } from '../api/ai'
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
+import AIActionExecutor from '../components/AIActionExecutor.vue'
 
 interface Message {
   role: 'user' | 'assistant' | 'system'
   content: string
   isMarkdown?: boolean
   queryExecuted?: boolean
+  actionPending?: boolean
+  pendingAction?: AIActionRequest
 }
 
 interface QuickQuery {
@@ -131,6 +156,10 @@ const quickQueries: QuickQuery[] = [
 const availableActions = ref<Array<{action_type: string, name: string, description: string}>>([])
 const userPermissions = ref<string[]>([])
 
+// 操作执行对话框状态
+const actionDialogVisible = ref(false)
+const pendingActionData = ref<AIActionRequest | undefined>(undefined)
+
 // 加载用户可用操作
 const loadAvailableActions = async () => {
   try {
@@ -144,6 +173,32 @@ const loadAvailableActions = async () => {
 
 // 页面加载时获取可用操作
 loadAvailableActions()
+
+// 显示操作对话框
+const showActionDialog = (action: AIActionRequest) => {
+  pendingActionData.value = action
+  actionDialogVisible.value = true
+}
+
+// 处理操作成功
+const handleActionSuccess = (result: AIActionResponse) => {
+  messages.value.push({
+    role: 'assistant',
+    content: `✅ 操作执行成功！\n\n${result.message}`,
+    isMarkdown: true
+  })
+  scrollToBottom()
+}
+
+// 处理操作失败
+const handleActionError = (error: any) => {
+  messages.value.push({
+    role: 'assistant',
+    content: `❌ 操作执行失败！\n\n${error.message || '未知错误'}`,
+    isMarkdown: true
+  })
+  scrollToBottom()
+}
 
 const scrollToBottom = async () => {
   await nextTick()

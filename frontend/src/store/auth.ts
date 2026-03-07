@@ -2,6 +2,11 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { UserInfo } from '../api/auth'
 
+// 获取班级ID的后6位
+const getClassSuffix = (classId: string): string => {
+  return classId.replace(/-/g, '').slice(-6)
+}
+
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('token') || '')
   const user = ref<UserInfo | null>(null)
@@ -94,11 +99,6 @@ export const useAuthStore = defineStore('auth', () => {
   
   function hasAllPermissions(permissionList: string[]): boolean {
     return permissionList.every(permission => hasPermission(permission))
-  }
-  
-  // 获取班级ID的后6位
-  function getClassSuffix(classId: string): string {
-    return classId.replace(/-/g, '').slice(-6)
   }
   
   // 检查是否拥有特定班级的权限

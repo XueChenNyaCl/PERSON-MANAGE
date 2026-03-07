@@ -100,17 +100,55 @@ export interface EnhancedChatResponse {
   query_type: string | null
 }
 
+export interface PageContextRequest {
+  page: string
+  path: string
+  params?: Record<string, any>
+  query?: Record<string, any>
+}
+
+export interface PageContextResponse {
+  page: string
+  data: Record<string, any>
+}
+
+export interface AssistantSuggestionRequest {
+  page_context: Record<string, any>
+  path?: string
+  name?: string
+}
+
+export interface AssistantSuggestionResponse {
+  suggestion: string
+}
+
 // AI 操作相关接口
 export interface AIActionRequest {
   action_type: string
   params: Record<string, any>
   reason: string
+  batch?: boolean
+  items?: any[]
 }
 
 export interface NameCandidate {
   id: string
   name: string
   info: string
+}
+
+export interface BatchItemResult {
+  success: boolean
+  index: number
+  data?: any
+  error?: string
+}
+
+export interface BatchOperationResult {
+  total: number
+  success_count: number
+  failure_count: number
+  items: BatchItemResult[]
 }
 
 export interface AIActionResponse {
@@ -120,6 +158,7 @@ export interface AIActionResponse {
   user_permissions: string[]
   need_confirmation: boolean
   candidates: NameCandidate[] | null
+  batch_result?: BatchOperationResult
 }
 
 export interface AvailableAction {
@@ -181,9 +220,11 @@ export const aiApi = {
     return api.post<DataQueryResponse>('/ai/query', request)
   },
 
-  // 增强版AI聊天 - 支持自动数据查询
+  // 增强版AI聊天 - 支持自动数据查询（超时时间60秒，因为可能需要多次AI调用）
   enhancedChat(request: EnhancedChatRequest) {
-    return api.post<EnhancedChatResponse>('/ai/enhanced-chat', request)
+    return api.post<EnhancedChatResponse>('/ai/enhanced-chat', request, {
+      timeout: 60000
+    })
   },
 
   // 执行AI操作
@@ -194,5 +235,15 @@ export const aiApi = {
   // 获取用户可用的AI操作列表
   getAvailableActions() {
     return api.get<AvailableActionsResponse>('/ai/actions/available')
+  },
+
+  // 获取页面上下文
+  getPageContext(request: PageContextRequest) {
+    return api.post<PageContextResponse>('/ai/context', request)
+  },
+
+  // 获取页面顶部AI助手建议
+  getAssistantSuggestion(request: AssistantSuggestionRequest) {
+    return api.post<AssistantSuggestionResponse>('/ai/assistant/suggestion', request)
   }
 }

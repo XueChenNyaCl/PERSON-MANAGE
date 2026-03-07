@@ -290,8 +290,8 @@ const loadAvailableStudents = async () => {
     })
     
     // 过滤掉已在小组中的学生
-    const memberIds = members.value.map(m => m.id)
-    availableStudents.value = response.data.items.filter((s: PersonResponse) => !memberIds.includes(s.id))
+    const memberIds = new Set(members.value.map(m => m.id))
+    availableStudents.value = response.data.items.filter((s: PersonResponse) => !memberIds.has(s.id))
     filteredStudents.value = [...availableStudents.value]
   } catch (error) {
     console.error('Error loading available students:', error)

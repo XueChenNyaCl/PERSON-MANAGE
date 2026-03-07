@@ -59,31 +59,3 @@ build = []
 [[bin]]
 name = "run_migration"
 path = "run_migration.rs"
-
-[[bin]]
-name = "simple_migration"
-path = "simple_migration.rs"
-
-[[bin]]
-name = "check_teacher_permissions"
-path = "check_teacher_permissions.rs"
-
-[[bin]]
-name = "fix_teacher_permissions"
-path = "fix_teacher_permissions.rs"
-
-[[bin]]
-name = "run_login_migration"
-path = "run_login_migration.rs"
-
-[[bin]]
-name = "run_permission_migration"
-path = "run_permission_migration.rs"
-
-[[bin]]
-name = "run_all_migrations"
-path = "run_all_migrations.rs"
-
-[[bin]]
-name = "run_ai_permission_migration"
-path = "run_ai_permission_migration.rs"

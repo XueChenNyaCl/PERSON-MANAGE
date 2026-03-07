@@ -28,6 +28,7 @@ pub async fn auth_middleware(
 // 旧的require_auth函数，保留兼容性
 use tower_http::auth::AsyncRequireAuthorizationLayer;
 
+#[allow(dead_code)]
 pub fn require_auth() -> AsyncRequireAuthorizationLayer<impl Fn(&str) -> Result<String, std::convert::Infallible> + Clone> {
     AsyncRequireAuthorizationLayer::new(|auth: &str| {
         // 这里只是一个简单的验证，实际应该使用上面的auth_middleware

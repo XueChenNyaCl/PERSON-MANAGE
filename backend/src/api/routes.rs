@@ -1,7 +1,7 @@
 use axum::{extract::State, Json, middleware, routing::delete, routing::get, routing::post, routing::put, Router};
 use sqlx::PgPool;
 
-use crate::api::{ai, ai_actions, ai_data, ai_enhanced, attendance, auth, class, department, debug, group, notice, permission, person, score};
+use crate::api::{ai, ai_actions, ai_assistant, ai_context_provider, ai_data, ai_enhanced, attendance, auth, class, department, debug, group, notice, permission, person, score};
 use crate::core::middleware::auth_middleware;
 use crate::core::plugin::PluginManager;
 
@@ -9,6 +9,7 @@ use crate::core::plugin::PluginManager;
 #[derive(Clone)]
 pub struct AppState {
     pub pool: Option<PgPool>,
+    #[allow(dead_code)]
     pub plugin_manager: PluginManager,
 }
 
@@ -106,6 +107,8 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
         .route("/api/ai/context-data", get(ai::get_context_data))
         .route("/api/ai/query", post(ai_data::query_data))
         .route("/api/ai/enhanced-chat", post(ai_enhanced::enhanced_chat))
+        .route("/api/ai/context", post(ai_context_provider::get_page_context))
+        .route("/api/ai/assistant/suggestion", post(ai_assistant::get_assistant_suggestion))
         .route("/api/ai/actions", post(ai_actions::execute_action))
         .route("/api/ai/actions/available", get(ai_actions::get_available_actions))
         .layer(middleware::from_fn(auth_middleware));

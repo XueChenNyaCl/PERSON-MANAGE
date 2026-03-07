@@ -1,5 +1,7 @@
 pub mod ai;
+pub mod ai_assistant;
 pub mod ai_actions;
+pub mod ai_context_provider;
 pub mod ai_data;
 pub mod ai_enhanced;
 pub mod attendance;

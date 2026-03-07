@@ -1,4 +1,4 @@
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use sqlx::PgPool;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -350,27 +350,29 @@ async fn check_teacher_permissions(pool: &PgPool) -> Result<(), Box<dyn std::err
         .await?;
     
     for class in classes {
-        println!("班级: {} (ID: {})", class.name, class.id);
+        println!("班级: {:?} (ID: {:?})", class.name, class.id);
         if let Some(teacher_id) = class.teacher_id {
             println!("  班主任ID: {}", teacher_id);
             println!("  班主任姓名: {:?}", class.teacher_name);
             
             // 获取班级ID后6位
-            let id_str = class.id.to_string().replace("-", "");
-            let class_suffix: String = id_str.chars().rev().take(6).collect::<String>().chars().rev().collect();
-            println!("  班级后缀: {}", class_suffix);
-            
-            // 查询该老师的权限
-            let permissions = sqlx::query!("SELECT permission, value, priority FROM user_permissions WHERE user_id = $1", teacher_id)
-                .fetch_all(pool)
-                .await?;
-            
-            if permissions.is_empty() {
-                println!("  该老师没有特定权限");
-            } else {
-                println!("  该老师的权限:");
-                for perm in permissions {
-                    println!("    - {} (value: {:?}, priority: {:?})", perm.permission, perm.value, perm.priority);
+            if let Some(class_id) = class.id {
+                let id_str = class_id.to_string().replace("-", "");
+                let class_suffix: String = id_str.chars().rev().take(6).collect::<String>().chars().rev().collect();
+                println!("  班级后缀: {}", class_suffix);
+                
+                // 查询该老师的权限
+                let permissions = sqlx::query!("SELECT permission, value, priority FROM user_permissions WHERE user_id = $1", teacher_id)
+                    .fetch_all(pool)
+                    .await?;
+                
+                if permissions.is_empty() {
+                    println!("  该老师没有特定权限");
+                } else {
+                    println!("  该老师的权限:");
+                    for perm in permissions {
+                        println!("    - {} (value: {:?}, priority: {:?})", perm.permission, perm.value, perm.priority);
+                    }
                 }
             }
         } else {

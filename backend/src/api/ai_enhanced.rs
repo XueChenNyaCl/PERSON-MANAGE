@@ -4,6 +4,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use reqwest::Client;
 use regex::Regex;
+use std::time::Duration;
 
 use crate::api::routes::AppState;
 use crate::api::ai_actions::{AIActionRequest, AIActionExecutor, NameResolver, ResolutionResult};
@@ -571,7 +572,12 @@ pub async fn enhanced_chat(
         stream: false,
     };
     
-    let client = Client::new();
+    // 创建带超时的HTTP客户端（单次AI请求最多30秒）
+    let client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| AppError::InternalWithMessage(format!("创建HTTP客户端失败: {}", e)))?;
+    
     let mut api_url = settings.api_base_url.clone();
     if !api_url.ends_with("/v1/chat/completions") && !api_url.ends_with("/v1/chat/completions/") {
         if !api_url.ends_with('/') {

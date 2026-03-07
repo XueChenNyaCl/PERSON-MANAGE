@@ -105,6 +105,73 @@ pub struct CreateScoreParams {
     pub value: i32,
 }
 
+/// 创建人员参数
+#[derive(Debug, Deserialize)]
+pub struct CreatePersonParams {
+    pub name: String,
+    pub person_type: String,  // student, teacher, parent
+    #[serde(deserialize_with = "deserialize_gender")]
+    pub gender: i16,  // 0: 未知, 1: 男, 2: 女
+    pub phone: Option<String>,
+    pub email: Option<String>,
+    pub birthday: Option<String>,  // YYYY-MM-DD
+    // 学生特有
+    pub student_no: Option<String>,
+    pub class_id: Option<String>,  // 可以是班级名称或UUID
+    pub enrollment_date: Option<String>,  // YYYY-MM-DD
+    // 教师特有
+    pub employee_no: Option<String>,
+    pub department_id: Option<String>,  // 可以是部门名称或UUID
+    pub title: Option<String>,
+    pub hire_date: Option<String>,  // YYYY-MM-DD
+}
+
+/// 自定义反序列化函数，支持字符串和数字类型的gender
+fn deserialize_gender<'de, D>(deserializer: D) -> Result<i16, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+    
+    let value: serde_json::Value = serde::Deserialize::deserialize(deserializer)?;
+    
+    match value {
+        serde_json::Value::Number(n) => {
+            n.as_i64()
+                .map(|v| v as i16)
+                .ok_or_else(|| D::Error::custom("无效的gender数值"))
+        }
+        serde_json::Value::String(s) => {
+            match s.to_lowercase().as_str() {
+                "male" | "男" | "m" | "1" => Ok(1),
+                "female" | "女" | "f" | "2" => Ok(2),
+                "unknown" | "未知" | "u" | "0" | "" => Ok(0),
+                _ => {
+                    // 尝试解析数字字符串
+                    s.parse::<i16>()
+                        .map_err(|_| D::Error::custom(format!("未知的gender值: {}", s)))
+                }
+            }
+        }
+        _ => Err(D::Error::custom("gender必须是字符串或数字")),
+    }
+}
+
+/// 批量创建人员参数
+#[derive(Debug, Deserialize)]
+pub struct CreatePersonsBatchParams {
+    pub items: Vec<CreatePersonParams>,
+}
+
+/// 批量操作结果项
+#[derive(Debug, Serialize)]
+pub struct BatchItemResult {
+    pub success: bool,
+    pub index: usize,
+    pub data: Option<serde_json::Value>,
+    pub error: Option<String>,
+}
+
 // ========== 名称解析服务 ==========
 
 pub struct NameResolver;
@@ -125,7 +192,7 @@ impl NameResolver {
             .bind(uuid)
             .fetch_one(pool)
             .await
-            .map_err(|e| AppError::Database(e))?;
+            .map_err(AppError::Database)?;
             
             if exists {
                 return Ok(ResolutionResult::Single(uuid.to_string()));
@@ -156,7 +223,7 @@ impl NameResolver {
         .bind(name)
         .fetch_all(pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
         
         if persons.is_empty() {
             return Ok(ResolutionResult::NotFound(format!("未找到名为 '{}' 的人员", name)));
@@ -192,7 +259,7 @@ impl NameResolver {
             .bind(uuid)
             .fetch_one(pool)
             .await
-            .map_err(|e| AppError::Database(e))?;
+            .map_err(AppError::Database)?;
             
             if exists {
                 return Ok(ResolutionResult::Single(uuid.to_string()));
@@ -214,7 +281,7 @@ impl NameResolver {
         .bind(name)
         .fetch_all(pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
         
         if groups.is_empty() {
             return Ok(ResolutionResult::NotFound(format!("未找到名为 '{}' 的小组", name)));
@@ -250,7 +317,7 @@ impl NameResolver {
             .bind(uuid)
             .fetch_one(pool)
             .await
-            .map_err(|e| AppError::Database(e))?;
+            .map_err(AppError::Database)?;
             
             if exists {
                 return Ok(ResolutionResult::Single(uuid.to_string()));
@@ -264,7 +331,7 @@ impl NameResolver {
         .bind(name)
         .fetch_all(pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
         
         if classes.is_empty() {
             return Ok(ResolutionResult::NotFound(format!("未找到名为 '{}' 的班级", name)));
@@ -281,6 +348,56 @@ impl NameResolver {
                 id: c.id.to_string(),
                 name: c.name.clone(),
                 info: format!("年级: {}", c.grade),
+            })
+            .collect();
+        
+        Ok(ResolutionResult::Multiple(candidates))
+    }
+    
+    /// 解析部门名称，返回部门ID
+    pub async fn resolve_department(
+        pool: &PgPool,
+        name: &str,
+    ) -> Result<ResolutionResult, AppError> {
+        // 首先尝试直接作为UUID解析
+        if let Ok(uuid) = Uuid::parse_str(name) {
+            let exists: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM departments WHERE id = $1)"
+            )
+            .bind(uuid)
+            .fetch_one(pool)
+            .await
+            .map_err(AppError::Database)?;
+            
+            if exists {
+                return Ok(ResolutionResult::Single(uuid.to_string()));
+            }
+        }
+        
+        // 按名称搜索部门
+        let departments: Vec<DepartmentInfo> = sqlx::query_as(
+            "SELECT id, name, description FROM departments WHERE name = $1 OR name ILIKE $1 ORDER BY name"
+        )
+        .bind(name)
+        .fetch_all(pool)
+        .await
+        .map_err(AppError::Database)?;
+        
+        if departments.is_empty() {
+            return Ok(ResolutionResult::NotFound(format!("未找到名为 '{}' 的部门", name)));
+        }
+        
+        if departments.len() == 1 {
+            return Ok(ResolutionResult::Single(departments[0].id.to_string()));
+        }
+        
+        // 有多个同名部门，返回候选项
+        let candidates: Vec<NameCandidate> = departments
+            .iter()
+            .map(|d| NameCandidate {
+                id: d.id.to_string(),
+                name: d.name.clone(),
+                info: d.description.clone().unwrap_or_else(|| "无描述".to_string()),
             })
             .collect();
         
@@ -324,6 +441,14 @@ struct ClassInfo {
     id: Uuid,
     name: String,
     grade: String,
+}
+
+/// 部门信息
+#[derive(sqlx::FromRow)]
+struct DepartmentInfo {
+    id: Uuid,
+    name: String,
+    description: Option<String>,
 }
 
 // ========== 智能参数补全服务 ==========
@@ -384,7 +509,7 @@ impl ParamAutoCompleter {
             .replace("三刻", "45");
         
         // 提取数字和冒号
-        let mut hour = 0;
+        let hour;
         let mut minute = 0;
         
         // 查找第一个数字序列作为小时
@@ -505,7 +630,7 @@ impl AIActionExecutor {
         pool: &PgPool,
         action_req: &AIActionRequest,
         user_id: Uuid,
-        user_name: &str,
+        _user_name: &str,
     ) -> Result<AIActionResponse, AppError> {
         // 获取用户权限
         let user_permissions = get_user_permissions(pool, user_id).await?;
@@ -532,6 +657,30 @@ impl AIActionExecutor {
             }
             "create_score" => {
                 Self::execute_create_score(pool, &action_req.params, &user_permissions).await
+            }
+            "create_attendances_batch" => {
+                let items = action_req.params.get("items")
+                    .and_then(|v| v.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                Self::execute_create_attendances_batch(pool, &items, &user_permissions).await
+            }
+            "create_scores_batch" => {
+                let items = action_req.params.get("items")
+                    .and_then(|v| v.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                Self::execute_create_scores_batch(pool, &items, &user_permissions).await
+            }
+            "create_person" => {
+                Self::execute_create_person(pool, &action_req.params, &user_permissions).await
+            }
+            "create_persons_batch" => {
+                let items = action_req.params.get("items")
+                    .and_then(|v| v.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                Self::execute_create_persons_batch(pool, &items, &user_permissions).await
             }
             _ => {
                 Ok(AIActionResponse {
@@ -622,7 +771,7 @@ impl AIActionExecutor {
         .bind(notice_params.is_important.unwrap_or(false))
         .fetch_one(pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
         
         Ok(AIActionResponse {
             success: true,
@@ -722,7 +871,7 @@ impl AIActionExecutor {
         .bind(group_params.description.as_deref().unwrap_or(""))
         .fetch_one(pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
         
         Ok(AIActionResponse {
             success: true,
@@ -805,7 +954,7 @@ impl AIActionExecutor {
         .bind(group_id)
         .fetch_one(pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
         
         if !group_exists {
             return Ok(AIActionResponse {
@@ -831,7 +980,7 @@ impl AIActionExecutor {
         .bind(user_id)
         .fetch_one(pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
         
         // 更新小组总积分
         sqlx::query(
@@ -841,7 +990,7 @@ impl AIActionExecutor {
         .bind(group_id)
         .execute(pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
         
         let action = if score_params.score_change >= 0 { "增加" } else { "扣除" };
         
@@ -951,7 +1100,7 @@ impl AIActionExecutor {
         .bind(person_id)
         .fetch_one(pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
         
         if member_exists {
             return Ok(AIActionResponse {
@@ -975,7 +1124,7 @@ impl AIActionExecutor {
         .bind(person_id)
         .fetch_one(pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
         
         // 执行添加
         sqlx::query(
@@ -985,7 +1134,7 @@ impl AIActionExecutor {
         .bind(person_id)
         .execute(pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
         
         Ok(AIActionResponse {
             success: true,
@@ -1093,7 +1242,7 @@ impl AIActionExecutor {
         .bind(person_id)
         .fetch_optional(pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
         
         let person_name = match person_info {
             Some(info) => info.0,
@@ -1117,7 +1266,7 @@ impl AIActionExecutor {
         .bind(person_id)
         .execute(pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
         
         if result.rows_affected() == 0 {
             return Ok(AIActionResponse {
@@ -1222,7 +1371,7 @@ impl AIActionExecutor {
             .unwrap_or_else(|| attendance_params.status.clone());
         
         // 验证考勤状态
-        let valid_statuses = vec!["present", "late", "absent", "early_leave", "excused"];
+        let valid_statuses = ["present", "late", "absent", "early_leave", "excused"];
         if !valid_statuses.contains(&status.as_str()) {
             return Ok(AIActionResponse {
                 success: false,
@@ -1281,7 +1430,7 @@ impl AIActionExecutor {
         .bind(attendance_params.remark.as_deref())
         .fetch_one(pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
         
         Ok(AIActionResponse {
             success: true,
@@ -1383,7 +1532,7 @@ impl AIActionExecutor {
         .bind(&score_params.reason)  // reason
         .fetch_one(pool)
         .await
-        .map_err(|e| AppError::Database(e))?;
+        .map_err(AppError::Database)?;
         
         Ok(AIActionResponse {
             success: true,
@@ -1395,6 +1544,336 @@ impl AIActionExecutor {
                 "reason": row.reason,
                 "score_type": row.score_type,
                 "created_at": row.created_at.to_rfc3339(),
+            })),
+            user_permissions: user_permissions.to_vec(),
+            need_confirmation: false,
+            candidates: None,
+        })
+    }
+
+    /// 执行创建人员操作
+    async fn execute_create_person(
+        pool: &PgPool,
+        params: &serde_json::Value,
+        user_permissions: &[String],
+    ) -> Result<AIActionResponse, AppError> {
+        // 检查权限
+        if !user_permissions.iter().any(|p| p == "person.create" || p == "person.*") {
+            return Ok(AIActionResponse {
+                success: false,
+                message: "没有创建人员的权限".to_string(),
+                data: None,
+                user_permissions: user_permissions.to_vec(),
+                need_confirmation: false,
+                candidates: None,
+            });
+        }
+
+        // 解析参数
+        let person_params: CreatePersonParams = match serde_json::from_value(params.clone()) {
+            Ok(p) => p,
+            Err(e) => {
+                return Ok(AIActionResponse {
+                    success: false,
+                    message: format!("参数解析失败: {}", e),
+                    data: None,
+                    user_permissions: user_permissions.to_vec(),
+                    need_confirmation: false,
+                    candidates: None,
+                });
+            }
+        };
+
+        // 验证必填字段
+        if person_params.name.trim().is_empty() {
+            return Ok(AIActionResponse {
+                success: false,
+                message: "人员姓名不能为空".to_string(),
+                data: None,
+                user_permissions: user_permissions.to_vec(),
+                need_confirmation: false,
+                candidates: None,
+            });
+        }
+
+        // 根据人员类型验证必填字段
+        match person_params.person_type.as_str() {
+            "student" => {
+                if person_params.student_no.is_none() || person_params.student_no.as_ref().unwrap().trim().is_empty() {
+                    return Ok(AIActionResponse {
+                        success: false,
+                        message: "创建学生时必须提供学号(student_no)".to_string(),
+                        data: None,
+                        user_permissions: user_permissions.to_vec(),
+                        need_confirmation: false,
+                        candidates: None,
+                    });
+                }
+            }
+            "teacher" => {
+                if person_params.employee_no.is_none() || person_params.employee_no.as_ref().unwrap().trim().is_empty() {
+                    return Ok(AIActionResponse {
+                        success: false,
+                        message: "创建教师时必须提供工号(employee_no)".to_string(),
+                        data: None,
+                        user_permissions: user_permissions.to_vec(),
+                        need_confirmation: false,
+                        candidates: None,
+                    });
+                }
+            }
+            "parent" => {
+                // 家长没有特殊必填字段
+            }
+            _ => {
+                return Ok(AIActionResponse {
+                    success: false,
+                    message: format!("未知的人员类型: {}，必须是 student、teacher 或 parent", person_params.person_type),
+                    data: None,
+                    user_permissions: user_permissions.to_vec(),
+                    need_confirmation: false,
+                    candidates: None,
+                });
+            }
+        }
+
+        // 执行创建
+        match Self::create_person_internal(pool, &person_params).await {
+            Ok(person_id) => {
+                Ok(AIActionResponse {
+                    success: true,
+                    message: format!("成功创建{} '{}'", 
+                        match person_params.person_type.as_str() {
+                            "student" => "学生",
+                            "teacher" => "教师",
+                            "parent" => "家长",
+                            _ => "人员"
+                        },
+                        person_params.name
+                    ),
+                    data: Some(serde_json::json!({
+                        "id": person_id.to_string(),
+                        "name": person_params.name,
+                        "person_type": person_params.person_type,
+                    })),
+                    user_permissions: user_permissions.to_vec(),
+                    need_confirmation: false,
+                    candidates: None,
+                })
+            }
+            Err(e) => {
+                Ok(AIActionResponse {
+                    success: false,
+                    message: format!("创建人员失败: {}", e),
+                    data: None,
+                    user_permissions: user_permissions.to_vec(),
+                    need_confirmation: false,
+                    candidates: None,
+                })
+            }
+        }
+    }
+
+    /// 内部方法：创建人员
+    async fn create_person_internal(
+        pool: &PgPool,
+        params: &CreatePersonParams,
+    ) -> Result<Uuid, AppError> {
+        use crate::core::password::hash_password;
+
+        let mut tx = pool.begin().await?;
+        let person_id = Uuid::new_v4();
+
+        // 解析日期
+        let birthday = params.birthday.as_ref()
+            .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
+        let enrollment_date = params.enrollment_date.as_ref()
+            .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
+        let hire_date = params.hire_date.as_ref()
+            .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
+
+        // 根据人员类型确定username
+        let username = match params.person_type.as_str() {
+            "student" => {
+                params.student_no.as_ref().cloned().unwrap_or_default()
+            }
+            "teacher" => {
+                params.employee_no.as_ref().cloned().unwrap_or_default()
+            }
+            "parent" => {
+                params.phone.clone().unwrap_or_else(|| person_id.to_string())
+            }
+            _ => person_id.to_string(),
+        };
+
+        // 生成密码哈希（默认密码123456）
+        let password_hash = hash_password("123456")
+            .map_err(|_| AppError::Internal)?;
+
+        // 插入人员基本信息
+        sqlx::query(
+            "INSERT INTO persons (id, name, username, password_hash, gender, birthday, phone, email, type) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)"
+        )
+        .bind(person_id)
+        .bind(&params.name)
+        .bind(&username)
+        .bind(&password_hash)
+        .bind(params.gender)
+        .bind(birthday)
+        .bind(&params.phone)
+        .bind(&params.email)
+        .bind(&params.person_type)
+        .execute(&mut *tx)
+        .await
+        .map_err(AppError::Database)?;
+
+        // 根据人员类型插入扩展信息
+        match params.person_type.as_str() {
+            "student" => {
+                let student_no = params.student_no.as_ref().cloned().unwrap_or_default();
+                
+                // 解析班级ID（支持名称或UUID）
+                let class_id = if let Some(class_id_str) = &params.class_id {
+                    match NameResolver::resolve_class(pool, class_id_str).await? {
+                        ResolutionResult::Single(id) => Some(Uuid::parse_str(&id).unwrap()),
+                        ResolutionResult::Multiple(_) => None,
+                        ResolutionResult::NotFound(_) => None,
+                    }
+                } else {
+                    None
+                };
+
+                sqlx::query(
+                    "INSERT INTO students (person_id, student_no, class_id, enrollment_date, status)
+                     VALUES ($1, $2, $3, $4, 'enrolled')"
+                )
+                .bind(person_id)
+                .bind(student_no)
+                .bind(class_id)
+                .bind(enrollment_date)
+                .execute(&mut *tx)
+                .await
+                .map_err(AppError::Database)?;
+            }
+            "teacher" => {
+                let employee_no = params.employee_no.as_ref().cloned().unwrap_or_default();
+                
+                // 解析部门ID（支持名称或UUID）
+                let department_id = if let Some(dept_id_str) = &params.department_id {
+                    match NameResolver::resolve_department(pool, dept_id_str).await? {
+                        ResolutionResult::Single(id) => Some(Uuid::parse_str(&id).unwrap()),
+                        ResolutionResult::Multiple(_) => None,
+                        ResolutionResult::NotFound(_) => None,
+                    }
+                } else {
+                    None
+                };
+
+                sqlx::query(
+                    "INSERT INTO teachers (person_id, employee_no, department_id, title, hire_date)
+                     VALUES ($1, $2, $3, $4, $5)"
+                )
+                .bind(person_id)
+                .bind(employee_no)
+                .bind(department_id)
+                .bind(&params.title)
+                .bind(hire_date)
+                .execute(&mut *tx)
+                .await
+                .map_err(AppError::Database)?;
+            }
+            "parent" => {
+                sqlx::query(
+                    "INSERT INTO parents (person_id, occupation, address)
+                     VALUES ($1, NULL, NULL)"
+                )
+                .bind(person_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(AppError::Database)?;
+            }
+            _ => {}
+        }
+
+        tx.commit().await.map_err(AppError::Database)?;
+        Ok(person_id)
+    }
+
+    /// 执行批量创建人员操作
+    async fn execute_create_persons_batch(
+        pool: &PgPool,
+        items: &[serde_json::Value],
+        user_permissions: &[String],
+    ) -> Result<AIActionResponse, AppError> {
+        // 检查权限
+        if !user_permissions.iter().any(|p| p == "person.create" || p == "person.*") {
+            return Ok(AIActionResponse {
+                success: false,
+                message: "没有创建人员的权限".to_string(),
+                data: None,
+                user_permissions: user_permissions.to_vec(),
+                need_confirmation: false,
+                candidates: None,
+            });
+        }
+
+        let mut success_count = 0;
+        let mut failure_count = 0;
+        let mut item_results = Vec::new();
+
+        for (index, item) in items.iter().enumerate() {
+            let person_params: CreatePersonParams = match serde_json::from_value(item.clone()) {
+                Ok(p) => p,
+                Err(e) => {
+                    failure_count += 1;
+                    item_results.push(BatchItemResult {
+                        success: false,
+                        index,
+                        data: None,
+                        error: Some(format!("参数解析失败: {}", e)),
+                    });
+                    continue;
+                }
+            };
+
+            match Self::create_person_internal(pool, &person_params).await {
+                Ok(person_id) => {
+                    success_count += 1;
+                    item_results.push(BatchItemResult {
+                        success: true,
+                        index,
+                        data: Some(serde_json::json!({
+                            "id": person_id.to_string(),
+                            "name": person_params.name,
+                        })),
+                        error: None,
+                    });
+                }
+                Err(e) => {
+                    failure_count += 1;
+                    item_results.push(BatchItemResult {
+                        success: false,
+                        index,
+                        data: None,
+                        error: Some(e.to_string()),
+                    });
+                }
+            }
+        }
+
+        let total = items.len();
+        Ok(AIActionResponse {
+            success: success_count > 0,
+            message: format!("批量创建人员完成: 成功 {} 个, 失败 {} 个, 总计 {} 个", 
+                success_count, failure_count, total),
+            data: Some(serde_json::json!({
+                "batch_result": {
+                    "total": total,
+                    "success_count": success_count,
+                    "failure_count": failure_count,
+                    "items": item_results,
+                }
             })),
             user_permissions: user_permissions.to_vec(),
             need_confirmation: false,
@@ -1440,6 +1919,7 @@ struct ScoreRecordRow {
 }
 
 #[derive(sqlx::FromRow)]
+#[allow(dead_code)]
 struct AttendanceRow {
     id: Uuid,
     person_id: Uuid,
@@ -1452,6 +1932,7 @@ struct AttendanceRow {
 }
 
 #[derive(sqlx::FromRow)]
+#[allow(dead_code)]
 struct ScoreRow {
     id: Uuid,
     person_id: Uuid,
@@ -1600,8 +2081,366 @@ pub async fn get_available_actions(
         }));
     }
     
+    // 批量考勤相关操作
+    if user_permissions.iter().any(|p| p == "attendance.create" || p == "attendance.*") {
+        available_actions.push(serde_json::json!({
+            "action_type": "create_attendances_batch",
+            "name": "批量创建考勤记录",
+            "description": "为多人批量创建考勤记录",
+            "required_params": ["items"],
+            "optional_params": [],
+            "param_tips": {
+                "items": "考勤记录数组，每个记录包含person_id, date, status等"
+            }
+        }));
+    }
+    
+    // 批量积分相关操作
+    if user_permissions.iter().any(|p| p == "score.create" || p == "score.*") {
+        available_actions.push(serde_json::json!({
+            "action_type": "create_scores_batch",
+            "name": "批量添加个人积分",
+            "description": "为多人批量添加个人表现积分",
+            "required_params": ["items"],
+            "optional_params": [],
+            "param_tips": {
+                "items": "积分记录数组，每个记录包含student_id, reason, value等"
+            }
+        }));
+    }
+    
     Ok(Json(serde_json::json!({
         "available_actions": available_actions,
         "user_permissions": user_permissions,
     })))
+}
+
+// ========== 批量操作执行函数 ==========
+
+impl AIActionExecutor {
+    /// 执行批量创建考勤记录
+    pub async fn execute_create_attendances_batch(
+        pool: &PgPool,
+        items: &[serde_json::Value],
+        user_permissions: &[String],
+    ) -> Result<AIActionResponse, AppError> {
+        // 检查权限
+        if !user_permissions.iter().any(|p| p == "attendance.create" || p == "attendance.*") {
+            return Ok(AIActionResponse {
+                success: false,
+                message: "没有创建考勤记录的权限".to_string(),
+                data: None,
+                user_permissions: user_permissions.to_vec(),
+                need_confirmation: false,
+                candidates: None,
+            });
+        }
+        
+        let mut batch_results = Vec::new();
+        let mut success_count = 0;
+        let mut failure_count = 0;
+        
+        for (index, item) in items.iter().enumerate() {
+            // 解析参数
+            let person_id_str = item.get("person_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            
+            // 解析人员ID
+            let person_id = match NameResolver::resolve_person(pool, person_id_str).await {
+                Ok(ResolutionResult::Single(id)) => match Uuid::parse_str(&id) {
+                    Ok(uuid) => uuid,
+                    Err(_) => {
+                        batch_results.push(serde_json::json!({
+                            "success": false,
+                            "index": index,
+                            "error": format!("无效的人员ID: {}", person_id_str)
+                        }));
+                        failure_count += 1;
+                        continue;
+                    }
+                },
+                Ok(ResolutionResult::Multiple(_)) => {
+                    batch_results.push(serde_json::json!({
+                        "success": false,
+                        "index": index,
+                        "error": format!("找到多个名为 '{}' 的人员", person_id_str)
+                    }));
+                    failure_count += 1;
+                    continue;
+                }
+                Ok(ResolutionResult::NotFound(msg)) => {
+                    batch_results.push(serde_json::json!({
+                        "success": false,
+                        "index": index,
+                        "error": msg
+                    }));
+                    failure_count += 1;
+                    continue;
+                }
+                Err(e) => {
+                    batch_results.push(serde_json::json!({
+                        "success": false,
+                        "index": index,
+                        "error": e.to_string()
+                    }));
+                    failure_count += 1;
+                    continue;
+                }
+            };
+            
+            // 解析日期
+            let date_str = item.get("date")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            
+            let date = ParamAutoCompleter::complete_date(date_str)
+                .unwrap_or_else(|| date_str.to_string());
+            
+            let naive_date = match NaiveDate::parse_from_str(&date, "%Y-%m-%d") {
+                Ok(d) => d,
+                Err(_) => {
+                    batch_results.push(serde_json::json!({
+                        "success": false,
+                        "index": index,
+                        "error": format!("无效的日期格式: {}", date)
+                    }));
+                    failure_count += 1;
+                    continue;
+                }
+            };
+            
+            // 解析状态
+            let status_str = item.get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            
+            let status = ParamAutoCompleter::complete_attendance_status(status_str)
+                .unwrap_or_else(|| status_str.to_string());
+            
+            let valid_statuses = ["present", "late", "absent", "early_leave", "excused"];
+            if !valid_statuses.contains(&status.as_str()) {
+                batch_results.push(serde_json::json!({
+                    "success": false,
+                    "index": index,
+                    "error": format!("无效的考勤状态: {}", status)
+                }));
+                failure_count += 1;
+                continue;
+            }
+            
+            // 解析时间
+            let naive_time = if let Some(time_str) = item.get("time").and_then(|v| v.as_str()) {
+                let time_str = ParamAutoCompleter::complete_time(time_str)
+                    .unwrap_or_else(|| time_str.to_string());
+                
+                if let Ok(time) = NaiveTime::parse_from_str(&time_str, "%H:%M") {
+                    Some(time)
+                } else {
+                    NaiveTime::parse_from_str(&time_str, "%H:%M:%S").ok()
+                }
+            } else {
+                None
+            };
+            
+            let remark = item.get("remark").and_then(|v| v.as_str());
+            
+            // 执行创建
+            match sqlx::query_as::<_, AttendanceRow>(
+                "INSERT INTO attendances (person_id, date, status, time, remark) 
+                 VALUES ($1, $2, $3, $4, $5) 
+                 RETURNING id, person_id, (SELECT name FROM persons WHERE id = $1) as person_name,
+                 date, status, time, remark, created_at"
+            )
+            .bind(person_id)
+            .bind(naive_date)
+            .bind(&status)
+            .bind(naive_time)
+            .bind(remark)
+            .fetch_one(pool)
+            .await
+            {
+                Ok(row) => {
+                    batch_results.push(serde_json::json!({
+                        "success": true,
+                        "index": index,
+                        "data": {
+                            "id": row.id.to_string(),
+                            "person_name": row.person_name,
+                            "date": row.date,
+                            "status": row.status,
+                        }
+                    }));
+                    success_count += 1;
+                }
+                Err(e) => {
+                    batch_results.push(serde_json::json!({
+                        "success": false,
+                        "index": index,
+                        "error": e.to_string()
+                    }));
+                    failure_count += 1;
+                }
+            }
+        }
+        
+        Ok(AIActionResponse {
+            success: success_count > 0,
+            message: format!("批量创建完成，成功{}个，失败{}个", success_count, failure_count),
+            data: Some(serde_json::json!({
+                "total": items.len(),
+                "success_count": success_count,
+                "failure_count": failure_count,
+                "items": batch_results
+            })),
+            user_permissions: user_permissions.to_vec(),
+            need_confirmation: false,
+            candidates: None,
+        })
+    }
+    
+    /// 执行批量创建成绩记录
+    pub async fn execute_create_scores_batch(
+        pool: &PgPool,
+        items: &[serde_json::Value],
+        user_permissions: &[String],
+    ) -> Result<AIActionResponse, AppError> {
+        // 检查权限
+        if !user_permissions.iter().any(|p| p == "score.create" || p == "score.*") {
+            return Ok(AIActionResponse {
+                success: false,
+                message: "没有添加个人积分的权限".to_string(),
+                data: None,
+                user_permissions: user_permissions.to_vec(),
+                need_confirmation: false,
+                candidates: None,
+            });
+        }
+        
+        let mut batch_results = Vec::new();
+        let mut success_count = 0;
+        let mut failure_count = 0;
+        
+        for (index, item) in items.iter().enumerate() {
+            // 解析学生ID
+            let student_id_str = item.get("student_id")
+                .or_else(|| item.get("person_id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            
+            let student_id = match NameResolver::resolve_person(pool, student_id_str).await {
+                Ok(ResolutionResult::Single(id)) => match Uuid::parse_str(&id) {
+                    Ok(uuid) => uuid,
+                    Err(_) => {
+                        batch_results.push(serde_json::json!({
+                            "success": false,
+                            "index": index,
+                            "error": format!("无效的学生ID: {}", student_id_str)
+                        }));
+                        failure_count += 1;
+                        continue;
+                    }
+                },
+                Ok(ResolutionResult::Multiple(_)) => {
+                    batch_results.push(serde_json::json!({
+                        "success": false,
+                        "index": index,
+                        "error": format!("找到多个名为 '{}' 的学生", student_id_str)
+                    }));
+                    failure_count += 1;
+                    continue;
+                }
+                Ok(ResolutionResult::NotFound(msg)) => {
+                    batch_results.push(serde_json::json!({
+                        "success": false,
+                        "index": index,
+                        "error": msg
+                    }));
+                    failure_count += 1;
+                    continue;
+                }
+                Err(e) => {
+                    batch_results.push(serde_json::json!({
+                        "success": false,
+                        "index": index,
+                        "error": e.to_string()
+                    }));
+                    failure_count += 1;
+                    continue;
+                }
+            };
+            
+            // 解析原因
+            let reason = item.get("reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            
+            if reason.is_empty() {
+                batch_results.push(serde_json::json!({
+                    "success": false,
+                    "index": index,
+                    "error": "评分原因不能为空"
+                }));
+                failure_count += 1;
+                continue;
+            }
+            
+            // 解析积分值
+            let value = item.get("value")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32;
+            
+            // 执行创建
+            match sqlx::query_as::<_, ScoreRow>(
+                "INSERT INTO scores (person_id, score_type, value, reason, event_id, created_by) 
+                 VALUES ($1, $2, $3, $4, NULL, NULL) 
+                 RETURNING id, person_id, 
+                 (SELECT name FROM persons WHERE id = $1) as person_name,
+                 score_type, value, reason, created_at"
+            )
+            .bind(student_id)
+            .bind("personal")
+            .bind(value)
+            .bind(reason)
+            .fetch_one(pool)
+            .await
+            {
+                Ok(row) => {
+                    batch_results.push(serde_json::json!({
+                        "success": true,
+                        "index": index,
+                        "data": {
+                            "id": row.id.to_string(),
+                            "person_name": row.person_name,
+                            "value": row.value,
+                            "reason": row.reason,
+                        }
+                    }));
+                    success_count += 1;
+                }
+                Err(e) => {
+                    batch_results.push(serde_json::json!({
+                        "success": false,
+                        "index": index,
+                        "error": e.to_string()
+                    }));
+                    failure_count += 1;
+                }
+            }
+        }
+        
+        Ok(AIActionResponse {
+            success: success_count > 0,
+            message: format!("批量添加完成，成功{}个，失败{}个", success_count, failure_count),
+            data: Some(serde_json::json!({
+                "total": items.len(),
+                "success_count": success_count,
+                "failure_count": failure_count,
+                "items": batch_results
+            })),
+            user_permissions: user_permissions.to_vec(),
+            need_confirmation: false,
+            candidates: None,
+        })
+    }
 }

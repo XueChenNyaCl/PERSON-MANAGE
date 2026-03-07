@@ -2,6 +2,7 @@ use crate::core::plugin::Plugin;
 use std::sync::Arc;
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct AttendancePlugin;
 
 impl Plugin for AttendancePlugin {
@@ -26,8 +27,9 @@ impl Plugin for AttendancePlugin {
     }
 }
 
+#[allow(dead_code)]
 impl AttendancePlugin {
-    pub fn new() -> Arc<dyn Plugin> {
+    pub fn create() -> Arc<dyn Plugin> {
         Arc::new(Self)
     }
 }

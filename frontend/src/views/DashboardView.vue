@@ -84,6 +84,7 @@
       
       <!-- 内容区域 -->
       <div class="content">
+        <AIAssistant />
         <PageTransition :duration="800" @animation-end="triggerCardAnimations" />
         <SectionBackground>
           <!-- 检查是否是仪表盘根路径 -->
@@ -416,6 +417,7 @@ import { noticeApi } from '../api/notice'
 import { scoreApi } from '../api/score'
 import SectionBackground from '../components/SectionBackground.vue'
 import PageTransition from '../components/PageTransition.vue'
+import AIAssistant from '../components/AIAssistant.vue'
 import '@styles/dashboard.css'
 
 // 图标名称到组件的映射

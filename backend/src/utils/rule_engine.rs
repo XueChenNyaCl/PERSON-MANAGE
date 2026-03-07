@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Serialize)]
+#[allow(dead_code)]
 pub struct Rule {
     pub id: Uuid,
     pub name: String,
@@ -13,16 +14,19 @@ pub struct Rule {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[allow(dead_code)]
 pub struct Event {
     pub event_type: String,
     pub data: serde_json::Value,
     pub timestamp: chrono::NaiveDateTime,
 }
 
+#[allow(dead_code)]
 pub struct RuleEngine {
     rules: Vec<Rule>,
 }
 
+#[allow(dead_code)]
 impl RuleEngine {
     pub fn new() -> Self {
         Self { rules: Vec::new() }

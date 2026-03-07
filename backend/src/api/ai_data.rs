@@ -781,10 +781,12 @@ impl MarkdownFormatter {
 
 // ========== 数据查询服务 ==========
 
+#[allow(dead_code)]
 pub struct DataQueryService {
     pool: PgPool,
 }
 
+#[allow(dead_code)]
 impl DataQueryService {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
@@ -809,7 +811,7 @@ impl DataQueryService {
                     .bind(uuid)
                     .fetch_one(&self.pool)
                     .await
-                    .map_err(|e| AppError::Database(e))?;
+                    .map_err(AppError::Database)?;
                     
                     if exists {
                         uuid
@@ -824,7 +826,7 @@ impl DataQueryService {
                     .bind(class_id_str)
                     .fetch_all(&self.pool)
                     .await
-                    .map_err(|e| AppError::Database(e))?;
+                    .map_err(AppError::Database)?;
                     
                     if classes.is_empty() {
                         return Err(AppError::InvalidInput(format!("未找到名为 '{}' 的班级", class_id_str)));
@@ -868,7 +870,7 @@ impl DataQueryService {
                     .bind(uuid)
                     .fetch_one(&self.pool)
                     .await
-                    .map_err(|e| AppError::Database(e))?;
+                    .map_err(AppError::Database)?;
                     
                     if exists {
                         uuid
@@ -888,10 +890,10 @@ impl DataQueryService {
                         WHERE cg.name = $1 OR cg.name ILIKE $1
                         ORDER BY cg.name"#,
                     )
-                    .bind(&group_id_str)
+                    .bind(group_id_str)
                     .fetch_all(&self.pool)
                     .await
-                    .map_err(|e| AppError::Database(e))?;
+                    .map_err(AppError::Database)?;
                     
                     if groups.is_empty() {
                         return Err(AppError::InvalidInput(format!("未找到名为 '{}' 的小组", group_id_str)));
@@ -935,7 +937,7 @@ impl DataQueryService {
                     .bind(uuid)
                     .fetch_one(&self.pool)
                     .await
-                    .map_err(|e| AppError::Database(e))?;
+                    .map_err(AppError::Database)?;
                     
                     if exists {
                         uuid
@@ -950,7 +952,7 @@ impl DataQueryService {
                     .bind(dept_id_str)
                     .fetch_all(&self.pool)
                     .await
-                    .map_err(|e| AppError::Database(e))?;
+                    .map_err(AppError::Database)?;
                     
                     if departments.is_empty() {
                         return Err(AppError::InvalidInput(format!("未找到名为 '{}' 的部门", dept_id_str)));
@@ -1043,7 +1045,7 @@ pub async fn query_data(
                 .bind(uuid)
                 .fetch_one(&pool)
                 .await
-                .map_err(|e| AppError::Database(e))?;
+                .map_err(AppError::Database)?;
                 
                 if exists {
                     uuid
@@ -1058,7 +1060,7 @@ pub async fn query_data(
                 .bind(class_id_str)
                 .fetch_all(&pool)
                 .await
-                .map_err(|e| AppError::Database(e))?;
+                .map_err(AppError::Database)?;
                 
                 if classes.is_empty() {
                     return Err(AppError::InvalidInput(format!("未找到名为 '{}' 的班级", class_id_str)));
@@ -1120,7 +1122,7 @@ pub async fn query_data(
                 .bind(uuid)
                 .fetch_one(&pool)
                 .await
-                .map_err(|e| AppError::Database(e))?;
+                .map_err(AppError::Database)?;
                 
                 if exists {
                     uuid
@@ -1143,7 +1145,7 @@ pub async fn query_data(
                 .bind(group_id_str)
                 .fetch_all(&pool)
                 .await
-                .map_err(|e| AppError::Database(e))?;
+                .map_err(AppError::Database)?;
                 
                 if groups.is_empty() {
                     return Err(AppError::InvalidInput(format!("未找到名为 '{}' 的小组", group_id_str)));
@@ -1205,7 +1207,7 @@ pub async fn query_data(
                 .bind(uuid)
                 .fetch_one(&pool)
                 .await
-                .map_err(|e| AppError::Database(e))?;
+                .map_err(AppError::Database)?;
                 
                 if exists {
                     uuid
@@ -1220,7 +1222,7 @@ pub async fn query_data(
                 .bind(dept_id_str)
                 .fetch_all(&pool)
                 .await
-                .map_err(|e| AppError::Database(e))?;
+                .map_err(AppError::Database)?;
                 
                 if departments.is_empty() {
                     return Err(AppError::InvalidInput(format!("未找到名为 '{}' 的部门", dept_id_str)));

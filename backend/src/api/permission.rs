@@ -215,10 +215,7 @@ pub async fn list_user_permissions(
     let manager = PermissionManager::new(pool.clone());
     
     // 检查权限：用户只能查看自己的权限，或者管理员可以查看所有
-    let is_admin = match manager.check_permission(current_user_id, "system.settings").await {
-        PermissionResult::Allowed => true,
-        _ => false,
-    };
+    let is_admin = matches!(manager.check_permission(current_user_id, "system.settings").await, PermissionResult::Allowed);
     
     if !is_admin && current_user_id != user_id {
         return Err(AppError::Auth("没有权限查看其他用户的权限".to_string()));
@@ -254,10 +251,7 @@ pub async fn add_user_permission(
     let manager = PermissionManager::new(pool.clone());
     
     // 检查权限：用户只能管理自己的权限，或者管理员可以管理所有
-    let is_admin = match manager.check_permission(current_user_id, "system.settings").await {
-        PermissionResult::Allowed => true,
-        _ => false,
-    };
+    let is_admin = matches!(manager.check_permission(current_user_id, "system.settings").await, PermissionResult::Allowed);
     
     if !is_admin && current_user_id != user_id {
         return Err(AppError::Auth("没有权限管理其他用户的权限".to_string()));
@@ -285,10 +279,7 @@ pub async fn remove_user_permission(
     let manager = PermissionManager::new(pool.clone());
     
     // 检查权限：用户只能管理自己的权限，或者管理员可以管理所有
-    let is_admin = match manager.check_permission(current_user_id, "system.settings").await {
-        PermissionResult::Allowed => true,
-        _ => false,
-    };
+    let is_admin = matches!(manager.check_permission(current_user_id, "system.settings").await, PermissionResult::Allowed);
     
     if !is_admin && current_user_id != user_id {
         return Err(AppError::Auth("没有权限管理其他用户的权限".to_string()));

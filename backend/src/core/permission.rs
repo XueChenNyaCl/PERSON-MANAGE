@@ -19,6 +19,7 @@ pub enum PermissionResult {
 
 /// 班级特定权限检查请求
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct ClassPermissionCheck {
     pub user_id: Uuid,
     pub permission: String,
@@ -252,7 +253,7 @@ impl PermissionManager {
                     
                     class_permissions
                         .entry(permission_prefix)
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(class_suffix);
                 }
             }
@@ -388,8 +389,8 @@ impl PermissionNode {
 
     /// 从字符串创建权限节点（用于从YAML解析，支持-前缀表示否定权限）
     fn from_string(permission_str: &str, priority: i32) -> Self {
-        let (value, permission) = if permission_str.starts_with('-') {
-            (false, permission_str[1..].to_string())
+        let (value, permission) = if let Some(stripped) = permission_str.strip_prefix('-') {
+            (false, stripped.to_string())
         } else {
             (true, permission_str.to_string())
         };
@@ -432,13 +433,11 @@ impl PermissionNode {
 }
 
 /// 工具函数：检查用户权限（简化接口）
+#[allow(dead_code)]
 pub async fn check_user_permission(pool: &PgPool, user_id: Uuid, permission: &str) -> bool {
     let manager = PermissionManager::new(pool.clone());
     
-    match manager.check_permission(user_id, permission).await {
-        PermissionResult::Allowed => true,
-        _ => false,
-    }
+    matches!(manager.check_permission(user_id, permission).await, PermissionResult::Allowed)
 }
 
 /// 工具函数：获取用户权限列表
@@ -561,7 +560,7 @@ pub fn load_default_template(role: &str) -> Result<PermissionTemplate, Box<dyn s
 }
 
 /// 为新用户应用角色模板
-pub async fn apply_role_template_to_user(pool: &PgPool, user_id: Uuid, role: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn apply_role_template_to_user(pool: &PgPool, _user_id: Uuid, role: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match load_default_template(role) {
         Ok(template) => {
             // 应用模板到角色（如果角色权限尚未设置）

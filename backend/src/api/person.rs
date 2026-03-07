@@ -312,8 +312,8 @@ async fn list_persons(
                 .bind(offset)
                 .fetch_all(pool)
                 .await?
-            } else {
-                sqlx::query_as::<_, PersonWithRelations>(
+        } else {
+            sqlx::query_as::<_, PersonWithRelations>(
                     "SELECT p.id, p.name, p.gender, p.birthday, p.phone, p.email, p.type, 
                             s.student_no, s.class_id, s.enrollment_date, s.status,
                             t.employee_no, t.department_id, t.title, t.hire_date,
@@ -336,8 +336,7 @@ async fn list_persons(
                 .fetch_all(pool)
                 .await?
             }
-        } else {
-            if let Some(class_id) = _class_id {
+        } else if let Some(class_id) = _class_id {
                 // 根据人员类型使用不同的class_id过滤逻辑
                 let query = if t == "teacher" {
                     // 老师通过teacher_class表关联
@@ -397,7 +396,7 @@ async fn list_persons(
                     .bind(offset)
                     .fetch_all(pool)
                     .await?
-            } else if let Some(department_id) = _department_id {
+        } else if let Some(department_id) = _department_id {
                 sqlx::query_as::<_, PersonWithRelations>(
                     "SELECT p.id, p.name, p.gender, p.birthday, p.phone, p.email, p.type, 
                             s.student_no, s.class_id, s.enrollment_date, s.status,
@@ -442,7 +441,6 @@ async fn list_persons(
                 .bind(offset)
                 .fetch_all(pool)
                 .await?
-            }
         }
     } else if let Some(s) = search {
         sqlx::query_as::<_, PersonWithRelations>(

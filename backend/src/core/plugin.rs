@@ -12,9 +12,11 @@ dyn_clone::clone_trait_object!(Plugin);
 
 #[derive(Clone)]
 pub struct PluginManager {
+    #[allow(dead_code)]
     plugins: Vec<Arc<dyn Plugin>>,
 }
 
+#[allow(dead_code)]
 impl PluginManager {
     pub fn new() -> Self {
         Self {
