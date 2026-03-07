@@ -199,8 +199,11 @@ impl NameResolver {
         pool: &PgPool,
         name: &str,
     ) -> Result<ResolutionResult, AppError> {
+        let keyword = name.trim();
+        let fuzzy_keyword = format!("%{}%", keyword);
+
         // 首先尝试直接作为UUID解析
-        if let Ok(uuid) = Uuid::parse_str(name) {
+        if let Ok(uuid) = Uuid::parse_str(keyword) {
             // 检查该UUID是否存在
             let exists: bool = sqlx::query_scalar(
                 "SELECT EXISTS(SELECT 1 FROM persons WHERE id = $1)"
@@ -233,16 +236,22 @@ impl NameResolver {
             LEFT JOIN teachers t ON p.id = t.person_id
             LEFT JOIN classes c ON s.class_id = c.id
             LEFT JOIN departments d ON t.department_id = d.id
-            WHERE p.name = $1 OR p.name ILIKE $1
+            WHERE p.name = $1
+               OR p.name ILIKE $2
+               OR s.student_no = $1
+               OR t.employee_no = $1
+               OR p.username = $1
+               OR p.phone = $1
             ORDER BY p.name"#,
         )
-        .bind(name)
+        .bind(keyword)
+        .bind(&fuzzy_keyword)
         .fetch_all(pool)
         .await
         .map_err(AppError::Database)?;
         
         if persons.is_empty() {
-            return Ok(ResolutionResult::NotFound(format!("未找到名为 '{}' 的人员", name)));
+            return Ok(ResolutionResult::NotFound(format!("未找到人员: '{}'（可用姓名/学号/工号/用户名/手机号）", keyword)));
         }
         
         if persons.len() == 1 {
@@ -2314,9 +2323,9 @@ struct AttendanceRow {
     id: Uuid,
     person_id: Uuid,
     person_name: String,
-    date: String,
+    date: NaiveDate,
     status: String,
-    time: Option<String>,
+    time: Option<NaiveTime>,
     remark: Option<String>,
     created_at: chrono::DateTime<chrono::Utc>,
 }
@@ -2423,7 +2432,7 @@ pub async fn get_available_actions(
             "optional_params": [],
             "param_tips": {
                 "group_id": "可以使用小组名称或UUID",
-                "person_id": "可以使用人员姓名或UUID"
+                "person_id": "可以使用姓名、学号、工号、用户名、手机号或UUID"
             }
         }));
         available_actions.push(serde_json::json!({
@@ -2434,7 +2443,7 @@ pub async fn get_available_actions(
             "optional_params": [],
             "param_tips": {
                 "group_id": "可以使用小组名称或UUID",
-                "person_id": "可以使用人员姓名或UUID"
+                "person_id": "可以使用姓名、学号、工号、用户名、手机号或UUID"
             }
         }));
     }
@@ -2448,7 +2457,7 @@ pub async fn get_available_actions(
             "required_params": ["person_id", "date", "status"],
             "optional_params": ["time", "remark"],
             "param_tips": {
-                "person_id": "可以使用人员姓名或UUID",
+                "person_id": "可以使用姓名、学号、工号、用户名、手机号或UUID",
                 "date": "支持日期格式(YYYY-MM-DD)或相对日期(今天、明天、昨天)",
                 "status": "支持中文(出勤、迟到、缺勤、早退、请假)或英文(present、late、absent、early_leave、excused)",
                 "time": "支持时间格式(HH:MM)或描述(上午8点、下午3点、现在)"
@@ -2465,7 +2474,7 @@ pub async fn get_available_actions(
             "required_params": ["student_id", "reason", "value"],
             "optional_params": [],
             "param_tips": {
-                "student_id": "可以使用人员姓名或UUID",
+                "student_id": "可以使用姓名、学号、工号、用户名、手机号或UUID",
                 "value": "积分值（整数），可正可负"
             }
         }));
