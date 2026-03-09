@@ -77,6 +77,14 @@ pub struct CreateGroupParams {
     pub description: Option<String>,
 }
 
+/// 创建部门参数
+#[derive(Debug, Deserialize)]
+pub struct CreateDepartmentParams {
+    pub name: String,
+    #[serde(default, alias = "parent", alias = "parent_name", alias = "parent_department", alias = "parent_department_id")]
+    pub parent_id: Option<String>,
+}
+
 /// 更新小组积分参数
 #[derive(Debug, Deserialize)]
 pub struct UpdateGroupScoreParams {
@@ -466,7 +474,7 @@ struct GroupInfo {
 struct ClassInfo {
     id: Uuid,
     name: String,
-    grade: String,
+    grade: i16,
 }
 
 /// 部门信息
@@ -660,6 +668,7 @@ impl AIActionExecutor {
     const MAX_NOTICE_CONTENT_LEN: usize = 4000;
     const MAX_GROUP_NAME_LEN: usize = 64;
     const MAX_GROUP_DESCRIPTION_LEN: usize = 500;
+    const MAX_DEPARTMENT_NAME_LEN: usize = 64;
     const MAX_PERSON_NAME_LEN: usize = 64;
     const MAX_REMARK_LEN: usize = 500;
 
@@ -872,6 +881,9 @@ impl AIActionExecutor {
             }
             "create_group" => {
                 Self::execute_create_group(pool, &action_req.params, &user_permissions).await
+            }
+            "create_department" => {
+                Self::execute_create_department(pool, &action_req.params, &user_permissions).await
             }
             "update_group_score" => {
                 Self::execute_update_group_score(pool, &action_req.params, user_id, &user_permissions).await
@@ -1208,6 +1220,122 @@ impl AIActionExecutor {
                 "id": row.id.to_string(),
                 "name": row.name,
                 "class_name": row.class_name,
+                "created_at": row.created_at.to_rfc3339(),
+            })),
+            user_permissions: user_permissions.to_vec(),
+            need_confirmation: false,
+            candidates: None,
+        })
+    }
+
+    /// 执行创建部门操作
+    async fn execute_create_department(
+        pool: &PgPool,
+        params: &serde_json::Value,
+        user_permissions: &[String],
+    ) -> Result<AIActionResponse, AppError> {
+        // 检查权限
+        if !user_permissions.iter().any(|p| p == "department.create" || p == "department.*") {
+            return Ok(AIActionResponse {
+                success: false,
+                message: "没有创建部门的权限".to_string(),
+                data: None,
+                user_permissions: user_permissions.to_vec(),
+                need_confirmation: false,
+                candidates: None,
+            });
+        }
+
+        // 解析参数
+        let department_params: CreateDepartmentParams = match serde_json::from_value(params.clone()) {
+            Ok(p) => p,
+            Err(e) => {
+                return Ok(AIActionResponse {
+                    success: false,
+                    message: format!("参数解析失败: {}", e),
+                    data: None,
+                    user_permissions: user_permissions.to_vec(),
+                    need_confirmation: false,
+                    candidates: None,
+                });
+            }
+        };
+
+        // 验证必填字段
+        if department_params.name.trim().is_empty() {
+            return Ok(AIActionResponse {
+                success: false,
+                message: "部门名称不能为空".to_string(),
+                data: None,
+                user_permissions: user_permissions.to_vec(),
+                need_confirmation: false,
+                candidates: None,
+            });
+        }
+
+        if Self::exceeds_char_limit(&department_params.name, Self::MAX_DEPARTMENT_NAME_LEN) {
+            return Ok(Self::invalid_input_response(
+                user_permissions,
+                format!("部门名称长度不能超过 {} 个字符", Self::MAX_DEPARTMENT_NAME_LEN),
+            ));
+        }
+
+        // 解析父部门ID（支持名称或UUID）
+        let parent_id = if let Some(parent) = department_params.parent_id.as_ref() {
+            let parent = parent.trim();
+            if parent.is_empty() {
+                None
+            } else {
+                match NameResolver::resolve_department(pool, parent).await? {
+                    ResolutionResult::Single(id) => Some(Uuid::parse_str(&id).unwrap()),
+                    ResolutionResult::Multiple(candidates) => {
+                        return Ok(AIActionResponse {
+                            success: false,
+                            message: format!("找到多个名为 '{}' 的部门，请选择", parent),
+                            data: None,
+                            user_permissions: user_permissions.to_vec(),
+                            need_confirmation: true,
+                            candidates: Some(candidates),
+                        });
+                    }
+                    ResolutionResult::NotFound(msg) => {
+                        return Ok(AIActionResponse {
+                            success: false,
+                            message: msg,
+                            data: None,
+                            user_permissions: user_permissions.to_vec(),
+                            need_confirmation: false,
+                            candidates: None,
+                        });
+                    }
+                }
+            }
+        } else {
+            None
+        };
+
+        let new_id = Uuid::new_v4();
+        let row = sqlx::query_as::<_, DepartmentRow>(
+            "INSERT INTO departments (id, name, parent_id)
+             VALUES ($1, $2, $3)
+             RETURNING id, name, parent_id, created_at,
+             (SELECT name FROM departments WHERE id = $3) as parent_name"
+        )
+        .bind(new_id)
+        .bind(&department_params.name)
+        .bind(parent_id)
+        .fetch_one(pool)
+        .await
+        .map_err(AppError::Database)?;
+
+        Ok(AIActionResponse {
+            success: true,
+            message: format!("部门 '{}' 创建成功", row.name),
+            data: Some(serde_json::json!({
+                "id": row.id.to_string(),
+                "name": row.name,
+                "parent_id": row.parent_id.map(|v| v.to_string()),
+                "parent_name": row.parent_name,
                 "created_at": row.created_at.to_rfc3339(),
             })),
             user_permissions: user_permissions.to_vec(),
@@ -2309,6 +2437,16 @@ struct GroupRow {
 
 #[derive(sqlx::FromRow)]
 #[allow(dead_code)]
+struct DepartmentRow {
+    id: Uuid,
+    name: String,
+    parent_id: Option<Uuid>,
+    parent_name: Option<String>,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(sqlx::FromRow)]
+#[allow(dead_code)]
 struct ScoreRecordRow {
     id: Uuid,
     score: i32,
@@ -2406,6 +2544,20 @@ pub async fn get_available_actions(
             "optional_params": ["description"],
             "param_tips": {
                 "class_id": "可以使用班级名称或UUID"
+            }
+        }));
+    }
+
+    // 部门相关操作
+    if user_permissions.iter().any(|p| p == "department.create" || p == "department.*") {
+        available_actions.push(serde_json::json!({
+            "action_type": "create_department",
+            "name": "创建部门",
+            "description": "创建新的部门",
+            "required_params": ["name"],
+            "optional_params": ["parent_id"],
+            "param_tips": {
+                "parent_id": "可以使用部门名称或UUID"
             }
         }));
     }

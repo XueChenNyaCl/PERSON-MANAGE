@@ -49,30 +49,44 @@
 
 ```text
 .
-├── frontend/                  # 前端工程
+├── frontend/                          # 前端工程（Vue3 + TS）
 │   ├── src/
-│   │   ├── api/               # 接口封装
-│   │   ├── components/        # 通用组件
-│   │   ├── router/            # 路由配置
-│   │   ├── stores/            # 状态管理
-│   │   ├── styles/            # 样式文件
-│   │   ├── types/             # 类型定义
-│   │   └── views/             # 页面视图
-│   └── package.json
-├── backend/                   # Rust 后端工程
+│   │   ├── App.vue                   # 根组件
+│   │   ├── main.ts                   # 前端入口
+│   │   ├── api/                      # 接口请求封装
+│   │   ├── router/                   # 路由模块
+│   │   ├── store/                    # Pinia 状态管理（兼容目录）
+│   │   ├── stores/                   # Pinia 状态管理
+│   │   ├── views/                    # 页面视图模块
+│   │   ├── components/               # 通用组件模块
+│   │   ├── composables/              # 组合式函数模块
+│   │   ├── utils/                    # 前端工具模块
+│   │   ├── types/                    # 类型声明模块
+│   │   ├── language/                 # 国际化模块
+│   │   ├── config/                   # 配置模块
+│   │   ├── assets/                   # 静态资源
+│   │   └── styles/                   # 样式模块
+│   └── package.json                  # 前端依赖配置
+├── backend/                           # Rust 后端工程（Axum + SQLx）
 │   ├── src/
-│   │   ├── api/               # 接口层
-│   │   ├── core/              # 核心配置、鉴权、数据库
-│   │   ├── models/            # 数据模型
-│   │   ├── plugins/           # 插件相关
-│   │   ├── utils/             # 工具函数
-│   │   └── ws/                # WebSocket
-│   ├── migrations/            # 数据库迁移文件
-│   ├── templates/permissions/ # 权限模板
-│   ├── run_migration.rs       # 迁移执行入口
-│   └── Cargo.toml
-├── package.json               # 根目录脚本配置
-└── README.md
+│   │   ├── main.rs                   # 后端入口
+│   │   ├── api/                      # 路由与接口模块
+│   │   ├── core/                     # 核心模块（配置/鉴权/数据库）
+│   │   ├── models/                   # 数据模型模块
+│   │   ├── plugins/                  # 插件扩展模块
+│   │   ├── ws/                       # WebSocket 模块
+│   │   ├── utils/                    # 工具函数模块
+│   │   └── bin/                      # 可执行子命令模块
+│   ├── migrations/                   # SQL 迁移文件
+│   ├── templates/permissions/        # 权限模板
+│   ├── run_migration.rs              # 迁移执行入口
+│   └── Cargo.toml                    # 后端依赖配置
+├── static/                            # 根目录静态资源
+├── templates/permissions/             # 根目录权限模板
+├── docs/                              # 项目文档
+├── scripts/                           # 构建/发布脚本
+├── package.json                       # 根脚本配置（联动前后端）
+└── README.md                          # 项目说明文档
 ```
 
 ## 环境要求

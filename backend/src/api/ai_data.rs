@@ -100,6 +100,20 @@ pub struct TeacherInfo {
     pub phone: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct PersonListItem {
+    pub id: Uuid,
+    pub name: String,
+    pub person_type: String,
+    pub gender: i16,
+    pub student_no: Option<String>,
+    pub employee_no: Option<String>,
+    pub class_name: Option<String>,
+    pub department_name: Option<String>,
+    pub phone: Option<String>,
+    pub email: Option<String>,
+}
+
 // ========== 数据查询请求/响应 ==========
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -460,6 +474,69 @@ impl DepartmentDataService {
     }
 }
 
+pub struct PersonDataService {
+    pool: PgPool,
+}
+
+impl PersonDataService {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
+    /// 查询人员列表（可按姓名、身份过滤）
+    pub async fn query_persons(
+        &self,
+        name: Option<&str>,
+        person_type: Option<&str>,
+        limit: i64,
+    ) -> Result<Vec<PersonListItem>, AppError> {
+        let safe_limit = limit.clamp(1, 200);
+        let name_param = name.map(str::trim).filter(|s| !s.is_empty());
+        let type_param = person_type.map(str::trim).filter(|s| !s.is_empty());
+
+        let persons = sqlx::query_as::<_, PersonListItem>(
+            r#"
+            SELECT
+                p.id,
+                p.name,
+                p.type as person_type,
+                p.gender,
+                s.student_no,
+                t.employee_no,
+                c.name as class_name,
+                d.name as department_name,
+                p.phone,
+                p.email
+            FROM persons p
+            LEFT JOIN students s ON p.id = s.person_id
+            LEFT JOIN classes c ON s.class_id = c.id
+            LEFT JOIN teachers t ON p.id = t.person_id
+            LEFT JOIN departments d ON t.department_id = d.id
+            WHERE ($1::text IS NULL OR p.name ILIKE $1)
+              AND ($2::text IS NULL OR p.type = $2)
+            ORDER BY
+                CASE p.type
+                    WHEN 'student' THEN 1
+                    WHEN 'teacher' THEN 2
+                    WHEN 'parent' THEN 3
+                    ELSE 9
+                END,
+                p.name,
+                COALESCE(s.student_no, t.employee_no, '')
+            LIMIT $3
+            "#,
+        )
+        .bind(name_param)
+        .bind(type_param)
+        .bind(safe_limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| AppError::InternalWithMessage(format!("查询人员列表失败: {}", e)))?;
+
+        Ok(persons)
+    }
+}
+
 // ========== Markdown格式化器 ==========
 
 pub struct MarkdownFormatter;
@@ -729,6 +806,74 @@ impl MarkdownFormatter {
             markdown.push('\n');
         }
 
+        markdown
+    }
+
+    /// 格式化人员列表为Markdown
+    pub fn format_person_list(
+        persons: &[PersonListItem],
+        name_filter: Option<&str>,
+        type_filter: Option<&str>,
+    ) -> String {
+        let mut markdown = String::new();
+
+        markdown.push_str("# 人员名单\n\n");
+
+        if let Some(name) = name_filter.filter(|s| !s.trim().is_empty()) {
+            markdown.push_str(&format!("- 姓名筛选: `{}`\n", name.trim()));
+        }
+        if let Some(person_type) = type_filter.filter(|s| !s.trim().is_empty()) {
+            markdown.push_str(&format!("- 身份筛选: `{}`\n", person_type.trim()));
+        }
+        if name_filter.is_some() || type_filter.is_some() {
+            markdown.push('\n');
+        }
+
+        if persons.is_empty() {
+            markdown.push_str("*未找到符合条件的人员*\n");
+            return markdown;
+        }
+
+        markdown.push_str("| 姓名 | 身份 | 编号 | 班级/部门 | 性别 | 联系方式 |\n");
+        markdown.push_str("|------|------|------|-----------|------|----------|\n");
+
+        for p in persons {
+            let person_type_label = match p.person_type.as_str() {
+                "student" => "学生",
+                "teacher" => "教师",
+                "parent" => "家长",
+                other => other,
+            };
+            let id_no = p
+                .student_no
+                .as_deref()
+                .or(p.employee_no.as_deref())
+                .unwrap_or("-");
+            let org = if p.person_type == "student" {
+                p.class_name.as_deref().unwrap_or("-")
+            } else if p.person_type == "teacher" {
+                p.department_name.as_deref().unwrap_or("-")
+            } else {
+                "-"
+            };
+            let gender_label = match p.gender {
+                1 => "男",
+                2 => "女",
+                _ => "未知",
+            };
+            let contact = p
+                .phone
+                .as_deref()
+                .or(p.email.as_deref())
+                .unwrap_or("-");
+
+            markdown.push_str(&format!(
+                "| {} | {} | {} | {} | {} | {} |\n",
+                p.name, person_type_label, id_no, org, gender_label, contact
+            ));
+        }
+
+        markdown.push_str(&format!("\n共 {} 人。\n", persons.len()));
         markdown
     }
 
