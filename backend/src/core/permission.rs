@@ -214,24 +214,22 @@ impl PermissionManager {
     /// 获取用户的所有权限（用于登录时返回）
     pub async fn get_user_permissions_list(&self, user_id: Uuid) -> Result<Vec<String>, sqlx::Error> {
         let role = self.get_user_role(user_id).await?;
-        
-        // 获取所有允许的权限
-        let mut allowed_permissions = HashSet::new();
+
+        // 先收集所有可能的权限键，再按 evaluate_permission 计算最终有效值。
+        // 这样可以正确处理“角色允许 + 用户拒绝(高优先级)”的覆盖场景。
         let effective_permissions = self.get_user_effective_permissions(user_id, &role).await;
-        
-        for node in effective_permissions {
-            if node.value {
-                // 如果是通配符权限，我们需要展开（这里简化处理）
-                if node.permission.contains('*') {
-                    // 对于通配符权限，我们只返回通配符本身
-                    // 实际应用中可能需要更复杂的展开逻辑
-                    allowed_permissions.insert(node.permission.clone());
-                } else {
-                    allowed_permissions.insert(node.permission.clone());
-                }
+        let mut all_permission_keys = HashSet::new();
+        for node in &effective_permissions {
+            all_permission_keys.insert(node.permission.clone());
+        }
+
+        let mut allowed_permissions = HashSet::new();
+        for permission_key in all_permission_keys {
+            if matches!(self.evaluate_permission(&effective_permissions, &permission_key), PermissionResult::Allowed) {
+                allowed_permissions.insert(permission_key);
             }
         }
-        
+
         Ok(allowed_permissions.into_iter().collect())
     }
     

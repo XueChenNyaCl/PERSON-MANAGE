@@ -69,12 +69,14 @@ export const permissionApi = {
   // 获取用户权限列表
   getUserPermissions: async (userId: string): Promise<Permission[]> => {
     const response = await api.get<UserPermissionListResponse>(`/permissions/users/${userId}`)
-    // 转换 UserPermissionItem 到 Permission（忽略 value 字段）
-    return response.data.permissions.map(item => ({
+    // 仅返回允许(value=true)的权限，拒绝权限用于覆盖逻辑，不应显示为“有效权限”
+    return response.data.permissions
+      .filter(item => item.value)
+      .map(item => ({
       permission: item.permission,
       priority: item.priority,
       created_at: item.created_at
-    }))
+      }))
   },
   
   // 获取角色权限列表（暂时返回所有角色权限）
