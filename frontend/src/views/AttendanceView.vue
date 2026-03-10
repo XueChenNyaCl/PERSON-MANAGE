@@ -110,8 +110,19 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { attendanceApi, AttendanceResponse, AttendanceCreate, AttendanceUpdate } from '../api/attendance'
 import { personApi } from '../api/person'
 import { useAuthStore } from '../store/auth'
+import { useMobile } from '../composables/useMobile'
 
 const authStore = useAuthStore()
+
+// 移动端适配
+const { isMobile, loadMobileStyle } = useMobile()
+
+// 动态加载移动端样式
+onMounted(async () => {
+  if (isMobile.value) {
+    await loadMobileStyle('view-common-mobile')
+  }
+})
 
 // 权限检查
 const canManage = computed(() => {

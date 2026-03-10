@@ -419,6 +419,17 @@ import SectionBackground from '../components/SectionBackground.vue'
 import PageTransition from '../components/PageTransition.vue'
 import AIAssistant from '../components/AIAssistant.vue'
 import '@styles/dashboard.css'
+import { useMobile } from '../composables/useMobile'
+
+// 移动端适配
+const { isMobile, loadMobileStyle } = useMobile()
+
+// 动态加载移动端样式
+onMounted(async () => {
+  if (isMobile.value) {
+    await loadMobileStyle('dashboard-mobile')
+  }
+})
 
 // 图标名称到组件的映射
 const iconComponents = {

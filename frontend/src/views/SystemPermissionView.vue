@@ -303,6 +303,17 @@ import type { Permission } from '../api/permission'
 
 // 导入样式文件
 import '../styles/permission-management.css'
+import { useMobile } from '../composables/useMobile'
+
+// 移动端适配
+const { isMobile, loadMobileStyle } = useMobile()
+
+// 动态加载移动端样式
+onMounted(async () => {
+  if (isMobile.value) {
+    await loadMobileStyle('view-common-mobile')
+  }
+})
 
 // 状态定义
 const userSearch = ref('')

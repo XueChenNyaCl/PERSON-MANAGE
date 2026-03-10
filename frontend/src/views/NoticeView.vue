@@ -109,8 +109,19 @@ import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { noticeApi, NoticeResponse, NoticeCreate, NoticeUpdate } from '../api/notice'
 import { useAuthStore } from '../store/auth'
+import { useMobile } from '../composables/useMobile'
 
 const authStore = useAuthStore()
+
+// 移动端适配
+const { isMobile, loadMobileStyle } = useMobile()
+
+// 动态加载移动端样式
+onMounted(async () => {
+  if (isMobile.value) {
+    await loadMobileStyle('view-common-mobile')
+  }
+})
 
 // 权限检查
 const canManage = computed(() => {

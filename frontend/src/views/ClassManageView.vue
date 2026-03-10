@@ -91,6 +91,17 @@ import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { classApi, type ClassResponse } from '../api/class'
 import { personApi, type PersonResponse } from '../api/person'
+import { useMobile } from '../composables/useMobile'
+
+// 移动端适配
+const { isMobile, loadMobileStyle } = useMobile()
+
+// 动态加载移动端样式
+onMounted(async () => {
+  if (isMobile.value) {
+    await loadMobileStyle('view-common-mobile')
+  }
+})
 
 // 班级相关
 const classesLoading = ref(false)

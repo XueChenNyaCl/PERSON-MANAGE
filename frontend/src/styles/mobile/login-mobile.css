@@ -1,0 +1,121 @@
+/**
+ * Login 移动端适配样式
+ */
+
+@media screen and (max-width: 768px) {
+  .login-container {
+    padding: 20px;
+    min-height: 100vh;
+    align-items: flex-start;
+    padding-top: 60px;
+  }
+
+  .login-form {
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 20px;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(78, 89, 105, 0.15);
+  }
+
+  .login-form h1 {
+    font-size: 20px;
+    margin-bottom: 24px;
+    line-height: 1.4;
+  }
+
+  /* 表单元素优化 */
+  .login-form .el-form-item {
+    margin-bottom: 20px;
+  }
+
+  .login-form .el-form-item__label {
+    font-size: 14px;
+    margin-bottom: 8px;
+    color: #4E5969;
+  }
+
+  .login-form .el-input {
+    height: 48px;
+  }
+
+  .login-form .el-input__inner {
+    height: 48px;
+    font-size: 16px;
+    border-radius: 8px;
+  }
+
+  .login-form .el-input__prefix {
+    left: 12px;
+  }
+
+  .login-form .el-input__icon {
+    font-size: 18px;
+  }
+
+  /* 记住我复选框 */
+  .login-form .el-checkbox {
+    font-size: 14px;
+  }
+
+  .login-form .el-checkbox__label {
+    font-size: 14px;
+    padding-left: 8px;
+  }
+
+  /* 登录按钮 */
+  .login-form .el-button {
+    height: 48px;
+    font-size: 16px;
+    border-radius: 8px;
+    margin-top: 8px;
+  }
+
+  /* 底部安全区域 */
+  .login-form {
+    margin-bottom: env(safe-area-inset-bottom, 0);
+  }
+}
+
+/* 小屏幕手机 */
+@media screen and (max-width: 375px) {
+  .login-container {
+    padding: 16px;
+    padding-top: 40px;
+  }
+
+  .login-form {
+    padding: 20px 16px;
+  }
+
+  .login-form h1 {
+    font-size: 18px;
+    margin-bottom: 20px;
+  }
+
+  .login-form .el-input {
+    height: 44px;
+  }
+
+  .login-form .el-input__inner {
+    height: 44px;
+    font-size: 16px;
+  }
+
+  .login-form .el-button {
+    height: 44px;
+    font-size: 15px;
+  }
+}
+
+/* 横屏模式 */
+@media screen and (max-width: 768px) and (orientation: landscape) {
+  .login-container {
+    padding-top: 20px;
+    align-items: center;
+  }
+
+  .login-form {
+    max-width: 400px;
+  }
+}

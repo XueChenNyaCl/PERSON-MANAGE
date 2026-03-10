@@ -117,6 +117,7 @@ import { aiApi, type ChatMessage, type AIActionRequest, type AIActionResponse } 
 import MarkdownRenderer from '../components/MarkdownRenderer.vue'
 import AIActionExecutor from '../components/AIActionExecutor.vue'
 import { useAIStore } from '../store/ai'
+import { useMobile } from '../composables/useMobile'
 
 interface Message {
   role: 'user' | 'assistant' | 'system'
@@ -178,8 +179,16 @@ const loadAvailableActions = async () => {
   }
 }
 
+// 移动端适配
+const { isMobile, loadMobileStyle } = useMobile()
+
 // 页面加载时获取可用操作
 loadAvailableActions()
+
+// 动态加载移动端样式
+if (isMobile.value) {
+  loadMobileStyle('ai-assistant-mobile')
+}
 
 watch(messages, (newMessages) => {
   aiStore.setChatMessages(newMessages)

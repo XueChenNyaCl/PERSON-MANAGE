@@ -166,10 +166,21 @@ import { ArrowLeft, Search } from '@element-plus/icons-vue'
 import { groupApi, type Group, type GroupMember, type GroupScoreRecord, type GroupScoreChange } from '../api/group'
 import { personApi, type PersonResponse } from '../api/person'
 import { useAuthStore } from '../store/auth'
+import { useMobile } from '../composables/useMobile'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+
+// 移动端适配
+const { isMobile, loadMobileStyle } = useMobile()
+
+// 动态加载移动端样式
+onMounted(async () => {
+  if (isMobile.value) {
+    await loadMobileStyle('view-common-mobile')
+  }
+})
 
 // 权限检查 - 通用权限
 

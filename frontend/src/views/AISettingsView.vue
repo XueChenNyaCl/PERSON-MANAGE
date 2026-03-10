@@ -74,8 +74,19 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { aiApi, type AISettings } from '../api/ai'
 import { useAuthStore } from '../store/auth'
+import { useMobile } from '../composables/useMobile'
 
 const authStore = useAuthStore()
+
+// 移动端适配
+const { isMobile, loadMobileStyle } = useMobile()
+
+// 动态加载移动端样式
+onMounted(async () => {
+  if (isMobile.value) {
+    await loadMobileStyle('view-common-mobile')
+  }
+})
 
 // 检查是否有 AI 设置权限
 const hasPermission = computed(() => {

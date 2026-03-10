@@ -103,9 +103,20 @@ import { User } from '@element-plus/icons-vue'
 import { classApi, type ClassResponse } from '../api/class'
 import { groupApi, type Group, type GroupCreate, type GroupUpdate } from '../api/group'
 import { useAuthStore } from '../store/auth'
+import { useMobile } from '../composables/useMobile'
 
 const router = useRouter()
 const authStore = useAuthStore()
+
+// 移动端适配
+const { isMobile, loadMobileStyle } = useMobile()
+
+// 动态加载移动端样式
+onMounted(async () => {
+  if (isMobile.value) {
+    await loadMobileStyle('view-common-mobile')
+  }
+})
 
 // 权限检查 - 通用权限
 

@@ -203,10 +203,21 @@ import { personApi, type PersonResponse, type PersonCreate, type PersonQuery, ty
 import { classApi } from '../api/class'
 import { departmentApi } from '../api/department'
 import { useAuthStore } from '../store/auth'
+import { useMobile } from '../composables/useMobile'
 import '../styles/person-view.css'
 
 // 权限管理
 const authStore = useAuthStore()
+
+// 移动端适配
+const { isMobile, loadMobileStyle } = useMobile()
+
+// 动态加载移动端样式
+onMounted(async () => {
+  if (isMobile.value) {
+    await loadMobileStyle('view-common-mobile')
+  }
+})
 
 // 检查是否有查看敏感信息的权限
 const canViewSensitiveInfo = computed(() => {

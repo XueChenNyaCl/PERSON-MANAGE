@@ -106,6 +106,17 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import { classApi, type ClassResponse, type ClassCreate, type ClassQuery } from '../api/class'
 import { personApi, type PersonResponse } from '../api/person'
+import { useMobile } from '../composables/useMobile'
+
+// 移动端适配
+const { isMobile, loadMobileStyle } = useMobile()
+
+// 动态加载移动端样式
+onMounted(async () => {
+  if (isMobile.value) {
+    await loadMobileStyle('view-common-mobile')
+  }
+})
 
 const loading = ref(false)
 const submitting = ref(false)
