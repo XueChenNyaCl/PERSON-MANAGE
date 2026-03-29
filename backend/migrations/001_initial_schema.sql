@@ -379,6 +379,60 @@ CREATE INDEX IF NOT EXISTS idx_scores_person_id ON scores(person_id);
 CREATE INDEX IF NOT EXISTS idx_scores_group_id ON scores(group_id);
 CREATE INDEX IF NOT EXISTS idx_scores_score_type ON scores(score_type);
 
+-- 6. 在线对话系统
+
+-- chat_conversations 表（会话）
+CREATE TABLE IF NOT EXISTS chat_conversations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_type VARCHAR(20) NOT NULL DEFAULT 'direct',
+    pair_key VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- chat_conversation_members 表（会话成员）
+CREATE TABLE IF NOT EXISTS chat_conversation_members (
+    conversation_id UUID NOT NULL,
+    user_id UUID NOT NULL,
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_read_at TIMESTAMPTZ,
+    PRIMARY KEY (conversation_id, user_id)
+);
+
+-- chat_messages 表（聊天消息）
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID NOT NULL,
+    sender_id UUID NOT NULL,
+    content TEXT NOT NULL,
+    message_type VARCHAR(20) NOT NULL DEFAULT 'text',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- chat_conversation_members 外键
+ALTER TABLE chat_conversation_members
+ADD CONSTRAINT fk_chat_conversation_members_conversation_id
+FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE;
+
+ALTER TABLE chat_conversation_members
+ADD CONSTRAINT fk_chat_conversation_members_user_id
+FOREIGN KEY (user_id) REFERENCES persons(id) ON DELETE CASCADE;
+
+-- chat_messages 外键
+ALTER TABLE chat_messages
+ADD CONSTRAINT fk_chat_messages_conversation_id
+FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE;
+
+ALTER TABLE chat_messages
+ADD CONSTRAINT fk_chat_messages_sender_id
+FOREIGN KEY (sender_id) REFERENCES persons(id) ON DELETE CASCADE;
+
+-- chat 表索引
+CREATE INDEX IF NOT EXISTS idx_chat_conversation_members_user_id ON chat_conversation_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id ON chat_messages(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_sender_id ON chat_messages(sender_id);
+CREATE INDEX IF NOT EXISTS idx_chat_conversations_pair_key ON chat_conversations(pair_key);
+
 -- 创建触发器
 
 -- persons 表触发器
@@ -415,6 +469,11 @@ CREATE TRIGGER update_notices_updated_at BEFORE UPDATE ON notices
 CREATE TRIGGER update_scores_updated_at BEFORE UPDATE ON scores
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- chat_conversations 表触发器
+CREATE TRIGGER update_chat_conversations_updated_at
+    BEFORE UPDATE ON chat_conversations
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- 初始化数据
 
 -- 1. 预留管理员账户
@@ -440,11 +499,68 @@ ON CONFLICT DO NOTHING;
 -- 管理员权限
 INSERT INTO permissions (role, permission, value, priority)
 VALUES 
-    ('admin', 'ai.view', true, 10),
-    ('admin', 'ai.chat', true, 10),
-    ('admin', 'ai.analyze', true, 10),
-    ('admin', 'ai.settings', true, 10),
-    ('admin', 'ai.*', true, 5)
+    ('admin', 'system.settings', True, 10),
+    ('admin', 'system.permissions', True, 10),
+    ('admin', 'person.view', True, 10),
+    ('admin', 'person.view.detail', True, 10),
+    ('admin', 'person.sensitive.view', True, 10),
+    ('admin', 'person.create', True, 10),
+    ('admin', 'person.update', True, 10),
+    ('admin', 'person.update.status', True, 10),
+    ('admin', 'person.delete', True, 10),
+    ('admin', 'class.view', True, 10),
+    ('admin', 'class.view.detail', True, 10),
+    ('admin', 'class.create', True, 10),
+    ('admin', 'class.update', True, 10),
+    ('admin', 'class.update.name', True, 10),
+    ('admin', 'class.update.grade', True, 10),
+    ('admin', 'class.update.teacher', True, 10),
+    ('admin', 'class.delete', True, 10),
+    ('admin', 'department.view', True, 10),
+    ('admin', 'department.create', True, 10),
+    ('admin', 'department.update', True, 10),
+    ('admin', 'department.delete', True, 10),
+    ('admin', 'attendance.view', True, 10),
+    ('admin', 'attendance.view.own', True, 10),
+    ('admin', 'attendance.create', True, 10),
+    ('admin', 'attendance.update', True, 10),
+    ('admin', 'attendance.delete', True, 10),
+    ('admin', 'score.view', True, 10),
+    ('admin', 'score.view.own', True, 10),
+    ('admin', 'score.create', True, 10),
+    ('admin', 'score.update', True, 10),
+    ('admin', 'score.delete', True, 10),
+    ('admin', 'notice.view', True, 10),
+    ('admin', 'notice.create', True, 10),
+    ('admin', 'notice.update', True, 10),
+    ('admin', 'notice.delete', True, 10),
+    ('admin', 'dashboard.view', True, 10),
+    ('admin', 'group.view', True, 10),
+    ('admin', 'group.create', True, 10),
+    ('admin', 'group.update', True, 10),
+    ('admin', 'group.update.member', True, 10),
+    ('admin', 'group.update.score', True, 10),
+    ('admin', 'group.delete', True, 10),
+    ('admin', 'ai.view', True, 10),
+    ('admin', 'ai.chat', True, 10),
+    ('admin', 'ai.analyze', True, 10),
+    ('admin', 'ai.settings', True, 10),
+    ('admin', 'chat.view', True, 10),
+    ('admin', 'chat.send', True, 10),
+    ('admin', 'chat.manage', True, 10),
+    ('admin', 'chat.cross_class', True, 10),
+    ('admin', 'person.*', True, 5),
+    ('admin', 'class.*', True, 5),
+    ('admin', 'department.*', True, 5),
+    ('admin', 'attendance.*', True, 5),
+    ('admin', 'score.*', True, 5),
+    ('admin', 'notice.*', True, 5),
+    ('admin', 'group.*', True, 5),
+    ('admin', 'ai.*', True, 5),
+    ('admin', 'chat.*', True, 5),
+    ('admin', '*.*', True, 5),
+    ('admin', '*', True, 5),
+    ('admin', '*.*.*', True, 5)
 ON CONFLICT (role, permission) DO UPDATE SET value = EXCLUDED.value, priority = EXCLUDED.priority;
 
 -- 教师权限
@@ -452,7 +568,11 @@ INSERT INTO permissions (role, permission, value, priority)
 VALUES 
     ('teacher', 'ai.view', true, 10),
     ('teacher', 'ai.chat', true, 10),
-    ('teacher', 'ai.analyze', true, 10)
+    ('teacher', 'ai.analyze', true, 10),
+    ('teacher', 'chat.view', true, 10),
+    ('teacher', 'chat.send', true, 10),
+    ('teacher', 'chat.manage', false, 15),
+    ('teacher', 'chat.cross_class', false, 15)
 ON CONFLICT (role, permission) DO UPDATE SET value = EXCLUDED.value, priority = EXCLUDED.priority;
 
 -- 学生权限
@@ -460,7 +580,11 @@ INSERT INTO permissions (role, permission, value, priority)
 VALUES 
     ('student', 'ai.view', true, 7),
     ('student', 'ai.chat', true, 7),
-    ('student', 'ai.analyze', true, 7)
+    ('student', 'ai.analyze', true, 7),
+    ('student', 'chat.view', true, 7),
+    ('student', 'chat.send', true, 7),
+    ('student', 'chat.manage', false, 10),
+    ('student', 'chat.cross_class', false, 10)
 ON CONFLICT (role, permission) DO UPDATE SET value = EXCLUDED.value, priority = EXCLUDED.priority;
 
 -- 家长权限

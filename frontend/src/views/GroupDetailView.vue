@@ -15,8 +15,12 @@
         </div>
       </template>
       
+      <div v-if="accessDenied" class="empty-state">
+        <el-empty :description="accessDeniedMessage"></el-empty>
+      </div>
+
       <!-- 小组信息 -->
-      <div class="group-info-section">
+      <div v-else class="group-info-section">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="所属班级">{{ group.class_name || '-' }}</el-descriptions-item>
           <el-descriptions-item label="成员数量">{{ group.member_count }}人</el-descriptions-item>
@@ -27,7 +31,7 @@
       </div>
       
       <!-- 成员管理 -->
-      <div class="section">
+      <div v-if="!accessDenied" class="section">
         <div class="section-header">
           <h3>小组成员</h3>
           <el-button v-if="hasClassPermission('group.update.member', group.class_id)" type="primary" @click="openAddMemberDialog">
@@ -56,7 +60,7 @@
       </div>
       
       <!-- 积分管理 -->
-      <div class="section">
+      <div v-if="!accessDenied" class="section">
         <div class="section-header">
           <h3>积分记录</h3>
           <el-button v-if="hasClassPermission('group.update.score', group.class_id)" type="primary" @click="showScoreDialog = true">
@@ -199,6 +203,8 @@ const membersLoading = ref(false)
 const recordsLoading = ref(false)
 const submitLoading = ref(false)
 const studentsLoading = ref(false)
+const accessDenied = ref(false)
+const accessDeniedMessage = ref('无权查看该小组详情')
 
 // 小组信息
 const group = ref<Group>({
@@ -251,21 +257,44 @@ const loadGroupDetail = async () => {
   try {
     const data = await groupApi.getGroup(groupId)
     group.value = data
-  } catch (error) {
+    accessDenied.value = false
+  } catch (error: any) {
+    if (error.response?.status === 403) {
+      accessDenied.value = true
+      accessDeniedMessage.value = '无权查看该小组详情'
+      members.value = []
+      scoreRecords.value = []
+      availableStudents.value = []
+      filteredStudents.value = []
+      ElMessage.warning(accessDeniedMessage.value)
+      return false
+    }
     ElMessage.error('加载小组详情失败')
     console.error('Error loading group detail:', error)
+    return false
   } finally {
     loading.value = false
   }
+
+  return true
 }
 
 // 加载成员列表
 const loadMembers = async () => {
+  if (accessDenied.value) return
   membersLoading.value = true
   try {
     const data = await groupApi.getGroupMembers(groupId)
     members.value = data
-  } catch (error) {
+  } catch (error: any) {
+    if (error.response?.status === 403) {
+      accessDenied.value = true
+      accessDeniedMessage.value = '无权查看该小组成员信息'
+      members.value = []
+      scoreRecords.value = []
+      ElMessage.warning(accessDeniedMessage.value)
+      return
+    }
     ElMessage.error('加载成员列表失败')
     console.error('Error loading members:', error)
   } finally {
@@ -275,11 +304,19 @@ const loadMembers = async () => {
 
 // 加载积分记录
 const loadScoreRecords = async () => {
+  if (accessDenied.value) return
   recordsLoading.value = true
   try {
     const data = await groupApi.getGroupScoreRecords(groupId)
     scoreRecords.value = data
-  } catch (error) {
+  } catch (error: any) {
+    if (error.response?.status === 403) {
+      accessDenied.value = true
+      accessDeniedMessage.value = '无权查看该小组积分记录'
+      scoreRecords.value = []
+      ElMessage.warning(accessDeniedMessage.value)
+      return
+    }
     ElMessage.error('加载积分记录失败')
     console.error('Error loading score records:', error)
   } finally {
@@ -289,7 +326,7 @@ const loadScoreRecords = async () => {
 
 // 加载可用学生
 const loadAvailableStudents = async () => {
-  if (!group.value.class_id) return
+  if (!group.value.class_id || accessDenied.value) return
   
   studentsLoading.value = true
   try {
@@ -347,18 +384,20 @@ const submitAddMembers = async () => {
   }
   
   submitLoading.value = true
-  let successCount = 0
-  let failCount = 0
-  
-  for (const student of selectedStudents.value) {
-    try {
-      await groupApi.addGroupMember(groupId, { person_id: student.id })
-      successCount++
-    } catch (error: any) {
-      failCount++
-      console.error(`添加成员 ${student.name} 失败:`, error)
+  const results = await Promise.allSettled(
+    selectedStudents.value.map((student) =>
+      groupApi.addGroupMember(groupId, { person_id: student.id })
+    )
+  )
+
+  const successCount = results.filter((result) => result.status === 'fulfilled').length
+  const failCount = results.length - successCount
+
+  results.forEach((result, index) => {
+    if (result.status === 'rejected') {
+      console.error(`添加成员 ${selectedStudents.value[index].name} 失败:`, result.reason)
     }
-  }
+  })
   
   submitLoading.value = false
   
@@ -439,12 +478,19 @@ const formatDate = (dateStr: string) => {
 
 // 初始化
 onMounted(async () => {
-  await loadGroupDetail()
+  const loaded = await loadGroupDetail()
+  if (!loaded) {
+    return
+  }
+
   await Promise.all([
     loadMembers(),
     loadScoreRecords()
   ])
-  await loadAvailableStudents()
+
+  if (!accessDenied.value) {
+    await loadAvailableStudents()
+  }
 })
 </script>
 

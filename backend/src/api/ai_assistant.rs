@@ -23,6 +23,8 @@ pub async fn get_assistant_suggestion(
     Json(req): Json<AssistantSuggestionRequest>,
 ) -> Result<Json<AssistantSuggestionResponse>, AppError> {
     let _pool = state.pool.ok_or_else(|| AppError::Internal)?;
+    let _route_hint = req.path.as_deref();
+    let _widget_name = req.name.as_deref();
 
     let page = req
         .page_context

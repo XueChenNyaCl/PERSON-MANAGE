@@ -142,6 +142,16 @@ permissions:
     priority: 10
   - permission: ai.settings
     priority: 10
+
+  # ========== 在线对话权限 ==========
+  - permission: chat.view
+    priority: 10
+  - permission: chat.send
+    priority: 10
+  - permission: chat.manage
+    priority: 10
+  - permission: chat.cross_class
+    priority: 10
   
   # ========== 通配符权限（覆盖所有操作） ==========
   - permission: "person.*"
@@ -159,4 +169,6 @@ permissions:
   - permission: "group.*"
     priority: 5
   - permission: "ai.*"
+    priority: 5
+  - permission: "chat.*"
     priority: 5

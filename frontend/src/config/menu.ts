@@ -29,6 +29,14 @@ export const menuItems: MenuItem[] = [
     requiredPermission: 'ai.settings',
     parentId: 'ai-management'
   },
+  {
+    id: 'chat',
+    title: '在线对话',
+    icon: 'ChatLineRound',
+    path: '/dashboard/chat',
+    requiredPermission: 'chat.view',
+    parentId: 'chat-management'
+  },
   
   
   // 人员管理
@@ -130,6 +138,10 @@ export const menuGroups = [
   {
     id: 'ai-management',
     title: 'AI 助手'
+  },
+  {
+    id: 'chat-management',
+    title: '在线沟通'
   },
   {
     id: 'person-management',

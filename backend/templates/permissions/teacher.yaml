@@ -5,8 +5,6 @@
 permissions:
   # ========== 人员管理权限 ==========
   # 查看权限（可以查看学生信息）
-  - permission: person.view
-    priority: 10
   - permission: person.view.detail
     priority: 10
   - permission: person.sensitive.view
@@ -122,6 +120,16 @@ permissions:
     priority: 10
   - permission: ai.analyze
     priority: 10
+
+  # ========== 在线对话权限 ==========
+  - permission: chat.view
+    priority: 10
+  - permission: chat.send
+    priority: 10
+  - permission: -chat.manage
+    priority: 15
+  - permission: -chat.cross_class
+    priority: 15
   
   # ========== 通配符权限（仅限管理的模块） ==========
   - permission: "attendance.*"

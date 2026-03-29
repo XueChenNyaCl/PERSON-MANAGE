@@ -10,13 +10,17 @@
         </div>
       </template>
       
+      <div v-if="classes.length === 0 && !classesLoading" class="empty-state">
+        <el-empty description="当前账号暂无可访问班级"></el-empty>
+      </div>
+
       <!-- 班级信息 -->
-      <div v-if="selectedClass" class="class-info">
+      <div v-else-if="selectedClass" class="class-info">
         <h3>{{ selectedClass.name }}</h3>
         <div class="class-detail">
           <div class="detail-item">
             <span class="label">年级：</span>
-            <span>{{ selectedClass.grade }}年级</span>
+            <span>{{ getGradeLabel(selectedClass.grade) }}</span>
           </div>
           <div class="detail-item">
             <span class="label">班主任：</span>
@@ -92,6 +96,7 @@ import { ElMessage } from 'element-plus'
 import { classApi, type ClassResponse } from '../api/class'
 import { personApi, type PersonResponse } from '../api/person'
 import { useMobile } from '../composables/useMobile'
+import { getGradeLabel } from '../utils/classOptions'
 
 // 移动端适配
 const { isMobile, loadMobileStyle } = useMobile()
@@ -152,7 +157,12 @@ const loadClassInfo = async (classId: string) => {
     const response = await classApi.get(classId)
     console.log('Class info response:', response)
     selectedClass.value = response.data
-  } catch (error) {
+  } catch (error: any) {
+    if (error.response?.status === 403) {
+      ElMessage.warning('无权查看该班级信息')
+      selectedClass.value = null
+      return
+    }
     ElMessage.error('加载班级信息失败')
     console.error('Error loading class info:', error)
   }
@@ -171,7 +181,12 @@ const loadClassTeachers = async (classId: string) => {
     })
     console.log('Class teachers response:', response)
     classTeachers.value = response.data.items
-  } catch (error) {
+  } catch (error: any) {
+    if (error.response?.status === 403) {
+      ElMessage.warning('无权查看该班级老师信息')
+      classTeachers.value = []
+      return
+    }
     ElMessage.error('加载班级老师失败')
     console.error('Error loading class teachers:', error)
     classTeachers.value = []
@@ -193,7 +208,12 @@ const loadClassStudents = async (classId: string) => {
     })
     console.log('Class students response:', response)
     classStudents.value = response.data.items
-  } catch (error) {
+  } catch (error: any) {
+    if (error.response?.status === 403) {
+      ElMessage.warning('无权查看该班级学生信息')
+      classStudents.value = []
+      return
+    }
     ElMessage.error('加载班级学生失败')
     console.error('Error loading class students:', error)
     classStudents.value = []

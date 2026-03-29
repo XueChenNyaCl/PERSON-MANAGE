@@ -6,6 +6,7 @@ pub mod ai_data;
 pub mod ai_enhanced;
 pub mod attendance;
 pub mod auth;
+pub mod chat;
 pub mod class;
 pub mod debug;
 pub mod department;

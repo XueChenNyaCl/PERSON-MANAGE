@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::api::routes::AppState;
 use crate::core::auth::Claims;
+use crate::core::data_scope::{ensure_class_access, get_accessible_class_ids};
 use crate::core::error::AppError;
 use crate::core::permission::PermissionManager;
 use crate::models::class::{Class, ClassCreate, ClassResponse, ClassUpdate};
@@ -30,14 +31,25 @@ pub struct ListResponse<T> {
 
 pub async fn list(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<ListResponse<ClassResponse>>, AppError> {
     let page = query.page.unwrap_or(1);
     let limit = query.limit.unwrap_or(20);
 
     if let Some(pool) = state.pool {
-        let (items, total) =
-            list_classes(&pool, query.search.as_deref(), query.grade, page, limit).await?;
+        let user_id = Uuid::parse_str(&claims.sub)
+            .map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+        let accessible_class_ids = get_accessible_class_ids(&pool, user_id, &claims.role).await?;
+        let (items, total) = list_classes(
+            &pool,
+            query.search.as_deref(),
+            query.grade,
+            page,
+            limit,
+            &accessible_class_ids,
+        )
+        .await?;
 
         Ok(Json(ListResponse {
             items,
@@ -67,9 +79,13 @@ pub async fn create(
 
 pub async fn get(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ClassResponse>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+
+    ensure_class_access(&pool, user_id, &claims.role, id).await?;
 
     let class = get_class(&pool, id).await?;
     Ok(Json(class))
@@ -114,9 +130,13 @@ pub async fn delete(
 // 获取班级的学生列表
 pub async fn get_class_students(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<PersonResponse>>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+
+    ensure_class_access(&pool, user_id, &claims.role, id).await?;
 
     let students = get_class_students_list(&pool, id).await?;
     Ok(Json(students))
@@ -125,9 +145,13 @@ pub async fn get_class_students(
 // 获取班级的老师列表
 pub async fn get_class_teachers(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<PersonResponse>>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+
+    ensure_class_access(&pool, user_id, &claims.role, id).await?;
 
     let teachers = get_class_teachers_list(&pool, id).await?;
     Ok(Json(teachers))
@@ -214,97 +238,59 @@ async fn list_classes(
     grade: Option<i16>,
     page: i64,
     limit: i64,
+    accessible_class_ids: &[Uuid],
 ) -> Result<(Vec<ClassResponse>, i64), AppError> {
+    if accessible_class_ids.is_empty() {
+        return Ok((Vec::new(), 0));
+    }
+
+    use sqlx::{Postgres, QueryBuilder};
+
     let offset = (page - 1) * limit;
 
-    let total = if let Some(s) = search {
-        if let Some(g) = grade {
-            sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM classes c WHERE c.name ILIKE $1 AND c.grade = $2",
-            )
-            .bind(format!("%{}%", s))
-            .bind(g)
-            .fetch_one(pool)
-            .await?
-        } else {
-            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM classes c WHERE c.name ILIKE $1")
-                .bind(format!("%{}%", s))
-                .fetch_one(pool)
-                .await?
+    let mut total_builder: QueryBuilder<Postgres> = QueryBuilder::new("SELECT COUNT(*)::bigint AS total FROM classes c WHERE c.id IN (");
+    {
+        let mut separated = total_builder.separated(", ");
+        for class_id in accessible_class_ids {
+            separated.push_bind(class_id);
         }
-    } else if let Some(g) = grade {
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM classes c WHERE c.grade = $1")
-            .bind(g)
-            .fetch_one(pool)
-            .await?
-    } else {
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM classes c")
-            .fetch_one(pool)
-            .await?
-    };
+    }
+    total_builder.push(")");
+    if let Some(s) = search {
+        total_builder.push(" AND c.name ILIKE ").push_bind(format!("%{}%", s));
+    }
+    if let Some(g) = grade {
+        total_builder.push(" AND c.grade = ").push_bind(g);
+    }
+    let total: i64 = total_builder.build_query_scalar().fetch_one(pool).await?;
 
-    let rows = if let Some(s) = search {
-        if let Some(g) = grade {
-            sqlx::query_as::<_, ClassWithTeacher>(
-                "SELECT c.id, c.name, c.grade, c.teacher_id, c.academic_year, c.created_at,
-                        p.name as teacher_name
-                 FROM classes c
-                 LEFT JOIN persons p ON c.teacher_id = p.id
-                 WHERE c.name ILIKE $1 AND c.grade = $2
-                 ORDER BY c.created_at DESC
-                 LIMIT $3 OFFSET $4",
-            )
-            .bind(format!("%{}%", s))
-            .bind(g)
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(pool)
-            .await?
-        } else {
-            sqlx::query_as::<_, ClassWithTeacher>(
-                "SELECT c.id, c.name, c.grade, c.teacher_id, c.academic_year, c.created_at,
-                        p.name as teacher_name
-                 FROM classes c
-                 LEFT JOIN persons p ON c.teacher_id = p.id
-                 WHERE c.name ILIKE $1
-                 ORDER BY c.created_at DESC
-                 LIMIT $2 OFFSET $3",
-            )
-            .bind(format!("%{}%", s))
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(pool)
-            .await?
+    let mut rows_builder: QueryBuilder<Postgres> = QueryBuilder::new(
+        "SELECT c.id, c.name, c.grade, c.teacher_id, c.academic_year, c.created_at,
+                p.name as teacher_name
+         FROM classes c
+         LEFT JOIN persons p ON c.teacher_id = p.id
+         WHERE c.id IN (",
+    );
+    {
+        let mut separated = rows_builder.separated(", ");
+        for class_id in accessible_class_ids {
+            separated.push_bind(class_id);
         }
-    } else if let Some(g) = grade {
-        sqlx::query_as::<_, ClassWithTeacher>(
-            "SELECT c.id, c.name, c.grade, c.teacher_id, c.academic_year, c.created_at,
-                    p.name as teacher_name
-             FROM classes c
-             LEFT JOIN persons p ON c.teacher_id = p.id
-             WHERE c.grade = $1
-             ORDER BY c.created_at DESC
-             LIMIT $2 OFFSET $3",
-        )
-        .bind(g)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(pool)
-        .await?
-    } else {
-        sqlx::query_as::<_, ClassWithTeacher>(
-            "SELECT c.id, c.name, c.grade, c.teacher_id, c.academic_year, c.created_at,
-                    p.name as teacher_name
-             FROM classes c
-             LEFT JOIN persons p ON c.teacher_id = p.id
-             ORDER BY c.created_at DESC
-             LIMIT $1 OFFSET $2",
-        )
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(pool)
-        .await?
-    };
+    }
+    rows_builder.push(")");
+    if let Some(s) = search {
+        rows_builder.push(" AND c.name ILIKE ").push_bind(format!("%{}%", s));
+    }
+    if let Some(g) = grade {
+        rows_builder.push(" AND c.grade = ").push_bind(g);
+    }
+    rows_builder
+        .push(" ORDER BY c.created_at DESC LIMIT ")
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
+
+    let rows = rows_builder.build_query_as::<ClassWithTeacher>().fetch_all(pool).await?;
 
     let items: Vec<ClassResponse> = rows.into_iter().map(|row| row.into_response()).collect();
 

@@ -15,8 +15,12 @@
         </div>
       </template>
       
+      <div v-if="classes.length === 0 && !classesLoading" class="empty-state">
+        <el-empty description="当前账号暂无可访问班级"></el-empty>
+      </div>
+
       <!-- 小组列表 -->
-      <div v-if="selectedClassId" class="group-list">
+      <div v-else-if="selectedClassId" class="group-list">
         <el-row :gutter="20">
           <el-col :xs="24" :sm="12" :md="8" :lg="6" v-for="group in groups" :key="group.id">
             <el-card class="group-card" shadow="hover" @click="viewGroupDetail(group)">
@@ -189,7 +193,12 @@ const loadGroups = async () => {
   try {
     const data = await groupApi.getGroupsByClass(selectedClassId.value)
     groups.value = data
-  } catch (error) {
+  } catch (error: any) {
+    if (error.response?.status === 403) {
+      groups.value = []
+      ElMessage.warning('无权查看该班级小组')
+      return
+    }
     ElMessage.error('加载小组列表失败')
     console.error('Error loading groups:', error)
   } finally {

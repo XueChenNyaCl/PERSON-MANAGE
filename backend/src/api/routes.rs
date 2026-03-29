@@ -15,7 +15,7 @@ use axum::{
 use sqlx::PgPool;
 use tower_http::services::ServeDir;
 
-use crate::api::{ai, ai_actions, ai_assistant, ai_context_provider, ai_data, ai_enhanced, attendance, auth, class, department, debug, group, notice, permission, person, score};
+use crate::api::{ai, ai_actions, ai_assistant, ai_context_provider, ai_data, ai_enhanced, attendance, auth, chat, class, department, debug, group, notice, permission, person, score};
 use crate::core::middleware::auth_middleware;
 use crate::core::plugin::PluginManager;
 
@@ -54,22 +54,12 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
         // 公开路由
         .route("/api/persons", get(person::list))
         .route("/api/persons/:id", get(person::get))
-        .route("/api/classes", get(class::list))
-        .route("/api/classes/:id", get(class::get))
-        .route("/api/classes/:id/students", get(class::get_class_students))
-        .route("/api/classes/:id/teachers", get(class::get_class_teachers))
         .route("/api/departments", get(department::list))
         .route("/api/departments/:id", get(department::get))
         .route("/api/attendances", get(attendance::list))
         .route("/api/scores", get(score::list))
         .route("/api/notices", get(notice::list))
         .route("/api/permission/teacher/classes", get(person::get_teacher_classes))
-        // 小组管理路由（公开查看）
-        .route("/api/groups", get(group::list_all))
-        .route("/api/groups/class/:class_id", get(group::list))
-        .route("/api/groups/:id", get(group::get))
-        .route("/api/groups/:id/members", get(group::get_members))
-        .route("/api/groups/:id/score-records", get(group::get_score_records))
         // WebSocket路由
         .route("/ws", get(crate::ws::handler::ws_handler));
 
@@ -78,9 +68,13 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
         .route("/api/persons", post(person::create))
         .route("/api/persons/:id", put(person::update))
         .route("/api/persons/:id", delete(person::delete))
+        .route("/api/classes", get(class::list))
         .route("/api/classes", post(class::create))
+        .route("/api/classes/:id", get(class::get))
         .route("/api/classes/:id", put(class::update))
         .route("/api/classes/:id", delete(class::delete))
+        .route("/api/classes/:id/students", get(class::get_class_students))
+        .route("/api/classes/:id/teachers", get(class::get_class_teachers))
         .route("/api/departments", post(department::create))
         .route("/api/departments/:id", put(department::update))
         .route("/api/departments/:id", delete(department::delete))
@@ -109,12 +103,21 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
         .route("/api/permissions/keys", get(permission::get_all_permission_keys))
         .route("/api/permissions/apply-yaml", post(permission::apply_yaml_template))
         // 小组管理路由（需要认证）
+        .route("/api/groups", get(group::list_all))
         .route("/api/groups", post(group::create))
+        .route("/api/groups/class/:class_id", get(group::list))
+        .route("/api/groups/:id", get(group::get))
         .route("/api/groups/:id", put(group::update))
         .route("/api/groups/:id", delete(group::delete))
+        .route("/api/groups/:id/members", get(group::get_members))
         .route("/api/groups/:id/members", post(group::add_member))
         .route("/api/groups/:id/members/:person_id", delete(group::remove_member))
+        .route("/api/groups/:id/score-records", get(group::get_score_records))
         .route("/api/groups/:id/score", post(group::update_score))
+        .route("/api/chat/conversations", get(chat::list_conversations))
+        .route("/api/chat/conversations/:id/messages", get(chat::list_messages))
+        .route("/api/chat/conversations/:id/messages", post(chat::send_message))
+        .route("/api/chat/conversations/:id/read", post(chat::mark_read))
         // AI 相关路由
         .route("/api/ai/chat", post(ai::chat))
         .route("/api/ai/identities", get(ai::list_identities))

@@ -77,5 +77,13 @@ permissions:
     priority: 7
   - permission: ai.analyze
     priority: 7
+  - permission: chat.view
+    priority: 7
+  - permission: chat.send
+    priority: 7
+  - permission: -chat.manage
+    priority: 10
+  - permission: -chat.cross_class
+    priority: 10
   - permission: dashboard.view
     priority: 7

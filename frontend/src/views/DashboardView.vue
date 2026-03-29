@@ -737,8 +737,8 @@ const fetchTeacherData = async () => {
     // 获取班级学生数量
     let totalStudents = 0
     if (classIds.length > 0) {
-      for (const classId of classIds) {
-        try {
+      const studentResults = await Promise.allSettled(
+        classIds.map(async (classId: string) => {
           console.log('[DashboardView] 获取班级学生, classId:', classId)
           const studentsResponse = await personApi.list({
             page: 1,
@@ -747,11 +747,18 @@ const fetchTeacherData = async () => {
             class_id: classId
           })
           console.log('[DashboardView] 班级学生响应, classId:', classId, 'total:', studentsResponse.data.total)
-          totalStudents += studentsResponse.data.total
-        } catch (error) {
-          console.error('[DashboardView] 获取班级学生失败, classId:', classId, 'error:', error)
+          return studentsResponse.data.total
+        })
+      )
+
+      totalStudents = studentResults.reduce((sum, result, index) => {
+        if (result.status === 'fulfilled') {
+          return sum + result.value
         }
-      }
+
+        console.error('[DashboardView] 获取班级学生失败, classId:', classIds[index], 'error:', result.reason)
+        return sum
+      }, 0)
     }
     teacherData.value.studentCount = totalStudents
     console.log('[DashboardView] 总学生数:', totalStudents)
@@ -767,10 +774,9 @@ const fetchTeacherData = async () => {
     let allAttendanceData: any[] = []
     
     if (classIds.length > 0) {
-      for (const classId of classIds) {
-        try {
+      const attendanceResults = await Promise.allSettled(
+        classIds.map(async (classId: string) => {
           console.log('[DashboardView] Fetching attendance for class ID:', classId)
-          // 不传date参数，获取所有考勤记录，然后过滤最近7天
           const attendanceResponse = await attendanceApi.list({
             page: 1,
             limit: 1000,
@@ -778,20 +784,25 @@ const fetchTeacherData = async () => {
           })
           console.log('[DashboardView] Attendance response for class', classId, ':', attendanceResponse.data)
           console.log('[DashboardView] Attendance items count:', attendanceResponse.data.items.length)
-          
-          // 过滤最近7天的考勤记录
+
           const recentAttendance = attendanceResponse.data.items.filter((item: any) => {
             const itemDate = new Date(item.date)
             return itemDate >= sevenDaysAgo
           })
           console.log('[DashboardView] Recent attendance (last 7 days) for class', classId, ':', recentAttendance.length)
-          
-          allAttendanceData = allAttendanceData.concat(recentAttendance)
-        } catch (error) {
-          console.error('[DashboardView] 获取考勤数据失败, classId:', classId, 'error:', error)
-          console.error('[DashboardView] Error details:', error instanceof Error ? error.message : String(error))
+          return recentAttendance
+        })
+      )
+
+      allAttendanceData = attendanceResults.flatMap((result, index) => {
+        if (result.status === 'fulfilled') {
+          return result.value
         }
-      }
+
+        console.error('[DashboardView] 获取考勤数据失败, classId:', classIds[index], 'error:', result.reason)
+        console.error('[DashboardView] Error details:', result.reason instanceof Error ? result.reason.message : String(result.reason))
+        return []
+      })
     } else {
       console.warn('[DashboardView] 没有班级ID，跳过考勤查询')
     }

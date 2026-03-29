@@ -86,6 +86,11 @@ const router = createRouter({
           path: 'ai/settings',
           name: 'ai-settings',
           component: () => import('../views/AISettingsView.vue')
+        },
+        {
+          path: 'chat',
+          name: 'chat',
+          component: () => import('../views/ChatView.vue')
         }
       ]
     },
@@ -125,6 +130,10 @@ const router = createRouter({
     {
       path: '/ai',
       redirect: '/dashboard/ai'
+    },
+    {
+      path: '/chat',
+      redirect: '/dashboard/chat'
     }
   ]
 })

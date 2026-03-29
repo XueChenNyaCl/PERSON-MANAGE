@@ -7,30 +7,34 @@ use uuid::Uuid;
 
 use crate::api::routes::AppState;
 use crate::core::auth::Claims;
+use crate::core::data_scope::{ensure_class_access, ensure_group_access, get_accessible_class_ids, get_group_class_id};
 use crate::core::error::AppError;
 use crate::core::permission::PermissionManager;
 use crate::models::group::*;
 
-// 小组列表（按班级）
 pub async fn list(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(class_id): Path<Uuid>,
 ) -> Result<Json<Vec<GroupResponse>>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    ensure_class_access(&pool, user_id, &claims.role, class_id).await?;
     let groups = list_groups(&pool, class_id).await?;
     Ok(Json(groups))
 }
 
-// 所有小组列表
 pub async fn list_all(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
 ) -> Result<Json<Vec<GroupResponse>>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
-    let groups = list_all_groups(&pool).await?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let accessible_class_ids = get_accessible_class_ids(&pool, user_id, &claims.role).await?;
+    let groups = list_all_groups(&pool, &accessible_class_ids).await?;
     Ok(Json(groups))
 }
 
-// 创建小组
 pub async fn create(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
@@ -38,30 +42,28 @@ pub async fn create(
 ) -> Result<Json<GroupResponse>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
-    
-    // 解析班级ID
     let class_id = Uuid::parse_str(&payload.class_id)
         .map_err(|_| AppError::InvalidInput("无效的班级ID".to_string()))?;
-    
-    // 检查班级特定权限：group.create.{class_suffix}
+
     let manager = PermissionManager::new(pool.clone());
     manager.require_class_permission(user_id, "group.create", class_id).await?;
-    
+
     let group = create_group(&pool, payload).await?;
     Ok(Json(group))
 }
 
-// 获取小组详情
 pub async fn get(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<GroupResponse>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    ensure_group_access(&pool, user_id, &claims.role, id).await?;
     let group = get_group(&pool, id).await?;
     Ok(Json(group))
 }
 
-// 更新小组
 pub async fn update(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
@@ -70,23 +72,15 @@ pub async fn update(
 ) -> Result<Json<GroupResponse>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
-    
-    // 获取小组所属班级ID
-    let group_row = sqlx::query_as::<_, GroupClassRow>("SELECT class_id FROM class_groups WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&pool)
-        .await?
-        .ok_or(AppError::NotFound)?;
-    
-    // 检查班级特定权限：group.update.{class_suffix}
+    let class_id = get_group_class_id(&pool, id).await?;
+
     let manager = PermissionManager::new(pool.clone());
-    manager.require_class_permission(user_id, "group.update", group_row.class_id).await?;
-    
+    manager.require_class_permission(user_id, "group.update", class_id).await?;
+
     let updated_group = update_group(&pool, id, payload).await?;
     Ok(Json(updated_group))
 }
 
-// 删除小组
 pub async fn delete(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
@@ -94,33 +88,27 @@ pub async fn delete(
 ) -> Result<StatusCode, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
-    
-    // 获取小组所属班级ID
-    let group_row = sqlx::query_as::<_, GroupClassRow>("SELECT class_id FROM class_groups WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&pool)
-        .await?
-        .ok_or(AppError::NotFound)?;
-    
-    // 检查班级特定权限：group.delete.{class_suffix}
+    let class_id = get_group_class_id(&pool, id).await?;
+
     let manager = PermissionManager::new(pool.clone());
-    manager.require_class_permission(user_id, "group.delete", group_row.class_id).await?;
-    
+    manager.require_class_permission(user_id, "group.delete", class_id).await?;
+
     delete_group(&pool, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-// 获取小组成员
 pub async fn get_members(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<GroupMemberResponse>>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    ensure_group_access(&pool, user_id, &claims.role, id).await?;
     let members = get_group_members(&pool, id).await?;
     Ok(Json(members))
 }
 
-// 添加成员
 pub async fn add_member(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
@@ -129,23 +117,15 @@ pub async fn add_member(
 ) -> Result<StatusCode, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
-    
-    // 获取小组所属班级ID
-    let group_row = sqlx::query_as::<_, GroupClassRow>("SELECT class_id FROM class_groups WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&pool)
-        .await?
-        .ok_or(AppError::NotFound)?;
-    
-    // 检查班级特定权限：group.update.member.{class_suffix}
+    let class_id = get_group_class_id(&pool, id).await?;
+
     let manager = PermissionManager::new(pool.clone());
-    manager.require_class_permission(user_id, "group.update.member", group_row.class_id).await?;
-    
+    manager.require_class_permission(user_id, "group.update.member", class_id).await?;
+
     add_group_member(&pool, id, &payload.person_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-// 移除成员
 pub async fn remove_member(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
@@ -153,23 +133,15 @@ pub async fn remove_member(
 ) -> Result<StatusCode, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
-    
-    // 获取小组所属班级ID
-    let group_row = sqlx::query_as::<_, GroupClassRow>("SELECT class_id FROM class_groups WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&pool)
-        .await?
-        .ok_or(AppError::NotFound)?;
-    
-    // 检查班级特定权限：group.update.member.{class_suffix}
+    let class_id = get_group_class_id(&pool, id).await?;
+
     let manager = PermissionManager::new(pool.clone());
-    manager.require_class_permission(user_id, "group.update.member", group_row.class_id).await?;
-    
+    manager.require_class_permission(user_id, "group.update.member", class_id).await?;
+
     remove_group_member(&pool, id, person_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-// 小组加分减分
 pub async fn update_score(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
@@ -178,39 +150,26 @@ pub async fn update_score(
 ) -> Result<Json<GroupScoreRecord>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
-    
-    // 获取小组所属班级ID
-    let group_row = sqlx::query_as::<_, GroupClassRow>("SELECT class_id FROM class_groups WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&pool)
-        .await?
-        .ok_or(AppError::NotFound)?;
-    
-    // 检查班级特定权限：group.update.score.{class_suffix}
+    let class_id = get_group_class_id(&pool, id).await?;
+
     let manager = PermissionManager::new(pool.clone());
-    manager.require_class_permission(user_id, "group.update.score", group_row.class_id).await?;
-    
+    manager.require_class_permission(user_id, "group.update.score", class_id).await?;
+
     let record = update_group_score(&pool, id, user_id, payload).await?;
     Ok(Json(record))
 }
 
-// 获取小组积分记录
 pub async fn get_score_records(
     State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<GroupScoreRecord>>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    ensure_group_access(&pool, user_id, &claims.role, id).await?;
     let records = get_group_score_records(&pool, id).await?;
     Ok(Json(records))
 }
-
-// 用于查询小组班级ID的辅助结构体
-#[derive(Debug, sqlx::FromRow)]
-struct GroupClassRow {
-    class_id: Uuid,
-}
-
-// 数据库操作函数
 
 async fn list_groups(pool: &sqlx::PgPool, class_id: Uuid) -> Result<Vec<GroupResponse>, AppError> {
     let rows: Vec<GroupListRow> = sqlx::query_as(
@@ -227,7 +186,7 @@ async fn list_groups(pool: &sqlx::PgPool, class_id: Uuid) -> Result<Vec<GroupRes
     .bind(class_id)
     .fetch_all(pool)
     .await?;
-    
+
     let groups: Vec<GroupResponse> = rows.into_iter().map(|row| GroupResponse {
         id: row.id,
         class_id: row.class_id,
@@ -239,24 +198,36 @@ async fn list_groups(pool: &sqlx::PgPool, class_id: Uuid) -> Result<Vec<GroupRes
         created_at: row.created_at,
         updated_at: row.updated_at,
     }).collect();
-    
+
     Ok(groups)
 }
 
-async fn list_all_groups(pool: &sqlx::PgPool) -> Result<Vec<GroupResponse>, AppError> {
-    let rows: Vec<GroupListRow> = sqlx::query_as(
+async fn list_all_groups(pool: &sqlx::PgPool, accessible_class_ids: &[Uuid]) -> Result<Vec<GroupResponse>, AppError> {
+    if accessible_class_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    use sqlx::{Postgres, QueryBuilder};
+
+    let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(
         "SELECT g.id, g.class_id, g.name, g.description, g.score, g.created_at, g.updated_at, 
                 c.name as class_name,
                 COUNT(gm.id) as member_count
          FROM class_groups g
          LEFT JOIN classes c ON g.class_id = c.id
          LEFT JOIN group_members gm ON g.id = gm.group_id
-         GROUP BY g.id, c.name
-         ORDER BY g.created_at DESC"
-    )
-    .fetch_all(pool)
-    .await?;
-    
+         WHERE g.class_id IN (",
+    );
+    {
+        let mut separated = builder.separated(", ");
+        for class_id in accessible_class_ids {
+            separated.push_bind(class_id);
+        }
+    }
+    builder.push(") GROUP BY g.id, c.name ORDER BY g.created_at DESC");
+
+    let rows: Vec<GroupListRow> = builder.build_query_as().fetch_all(pool).await?;
+
     let groups: Vec<GroupResponse> = rows.into_iter().map(|row| GroupResponse {
         id: row.id,
         class_id: row.class_id,
@@ -268,7 +239,7 @@ async fn list_all_groups(pool: &sqlx::PgPool) -> Result<Vec<GroupResponse>, AppE
         created_at: row.created_at,
         updated_at: row.updated_at,
     }).collect();
-    
+
     Ok(groups)
 }
 

@@ -445,23 +445,22 @@ async fn check_teacher_permissions(pool: &PgPool) -> Result<(), Box<dyn std::err
             println!("  班主任姓名: {:?}", class.teacher_name);
             
             // 获取班级ID后6位
-            if let Some(class_id) = class.id {
-                let id_str = class_id.to_string().replace("-", "");
-                let class_suffix: String = id_str.chars().rev().take(6).collect::<String>().chars().rev().collect();
-                println!("  班级后缀: {}", class_suffix);
-                
-                // 查询该老师的权限
-                let permissions = sqlx::query!("SELECT permission, value, priority FROM user_permissions WHERE user_id = $1", teacher_id)
-                    .fetch_all(pool)
-                    .await?;
-                
-                if permissions.is_empty() {
-                    println!("  该老师没有特定权限");
-                } else {
-                    println!("  该老师的权限:");
-                    for perm in permissions {
-                        println!("    - {} (value: {:?}, priority: {:?})", perm.permission, perm.value, perm.priority);
-                    }
+            let class_id = class.id;
+            let id_str = class_id.to_string().replace("-", "");
+            let class_suffix: String = id_str.chars().rev().take(6).collect::<String>().chars().rev().collect();
+            println!("  班级后缀: {}", class_suffix);
+            
+            // 查询该老师的权限
+            let permissions = sqlx::query!("SELECT permission, value, priority FROM user_permissions WHERE user_id = $1", teacher_id)
+                .fetch_all(pool)
+                .await?;
+            
+            if permissions.is_empty() {
+                println!("  该老师没有特定权限");
+            } else {
+                println!("  该老师的权限:");
+                for perm in permissions {
+                    println!("    - {} (value: {:?}, priority: {:?})", perm.permission, perm.value, perm.priority);
                 }
             }
         } else {
@@ -499,8 +498,8 @@ async fn fix_teacher_permissions(pool: &PgPool) -> Result<(), Box<dyn std::error
     
     for class in classes {
         let teacher_id = class.teacher_id.unwrap();
-        let class_id = class.id.unwrap();
-        let class_name = class.name.unwrap_or_else(|| "未知班级".to_string());
+        let class_id = class.id;
+        let class_name = class.name;
         
         println!("班级: {} (ID: {})", class_name, class_id);
         println!("  班主任: {:?} (ID: {})", class.teacher_name, teacher_id);
@@ -577,9 +576,7 @@ async fn run_all_migrations(pool: &PgPool) -> Result<(), Box<dyn std::error::Err
     }
     
     // 定义所有迁移文件（按顺序）
-    let migrations = vec![
-        (1, vec!["001_initial_schema.sql"], "initial schema with all tables and data"),
-    ];
+    let migrations = vec![(1, vec!["001_initial_schema.sql"], "initial schema with all tables and data")];
     
     for (version, filenames, description) in migrations {
         // 检查迁移是否已经执行

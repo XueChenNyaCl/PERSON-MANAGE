@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { aiApi } from './ai'
+import { chatApi } from './chat'
 
 const api = axios.create({
   baseURL: '/api',
@@ -8,7 +9,8 @@ const api = axios.create({
 
 // 导出所有 API 模块
 export const apiModules = {
-  ai: aiApi
+  ai: aiApi,
+  chat: chatApi
 }
 
 // 请求拦截器：添加JWT令牌

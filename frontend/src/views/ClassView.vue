@@ -13,16 +13,13 @@
         </el-form-item>
         <el-form-item label="年级">
           <el-select v-model="searchForm.grade" placeholder="请选择年级">
-            <el-option label="全部" value=""></el-option>
-            <el-option label="一年级" value="1"></el-option>
-            <el-option label="二年级" value="2"></el-option>
-            <el-option label="三年级" value="3"></el-option>
-            <el-option label="四年级" value="4"></el-option>
-            <el-option label="五年级" value="5"></el-option>
-            <el-option label="六年级" value="6"></el-option>
-            <el-option label="七年级" value="7"></el-option>
-            <el-option label="八年级" value="8"></el-option>
-            <el-option label="九年级" value="9"></el-option>
+            <el-option label="全部" :value="undefined"></el-option>
+            <el-option
+              v-for="option in gradeOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            ></el-option>
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -38,7 +35,7 @@
         <el-table-column prop="name" label="班级名称"></el-table-column>
         <el-table-column prop="grade" label="年级" width="100">
           <template #default="scope">
-            {{ scope.row.grade }}年级
+            {{ getGradeLabel(scope.row.grade) }}
           </template>
         </el-table-column>
         <el-table-column prop="teacher_name" label="班主任"></el-table-column>
@@ -62,7 +59,6 @@
       />
     </el-card>
 
-    <!-- 新增/编辑弹窗 -->
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="600px">
       <el-form :model="form" :rules="rules" ref="formRef" label-width="100px">
         <el-form-item label="班级名称" prop="name">
@@ -70,15 +66,12 @@
         </el-form-item>
         <el-form-item label="年级" prop="grade">
           <el-select v-model="form.grade" placeholder="请选择年级">
-            <el-option label="一年级" value="1"></el-option>
-            <el-option label="二年级" value="2"></el-option>
-            <el-option label="三年级" value="3"></el-option>
-            <el-option label="四年级" value="4"></el-option>
-            <el-option label="五年级" value="5"></el-option>
-            <el-option label="六年级" value="6"></el-option>
-            <el-option label="七年级" value="7"></el-option>
-            <el-option label="八年级" value="8"></el-option>
-            <el-option label="九年级" value="9"></el-option>
+            <el-option
+              v-for="option in gradeOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            ></el-option>
           </el-select>
         </el-form-item>
         <el-form-item label="班主任">
@@ -107,11 +100,10 @@ import type { FormInstance } from 'element-plus'
 import { classApi, type ClassResponse, type ClassCreate, type ClassQuery } from '../api/class'
 import { personApi, type PersonResponse } from '../api/person'
 import { useMobile } from '../composables/useMobile'
+import { getGradeLabel, gradeOptions } from '../utils/classOptions'
 
-// 移动端适配
 const { isMobile, loadMobileStyle } = useMobile()
 
-// 动态加载移动端样式
 onMounted(async () => {
   if (isMobile.value) {
     await loadMobileStyle('view-common-mobile')
@@ -125,9 +117,9 @@ const classList = ref<ClassResponse[]>([])
 const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(20)
-const searchForm = ref({
+const searchForm = ref<{ search: string; grade?: number }>({
   search: '',
-  grade: ''
+  grade: undefined
 })
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增班级')
@@ -135,7 +127,6 @@ const formRef = ref<FormInstance>()
 const editingId = ref<string>('')
 const teachers = ref<PersonResponse[]>([])
 
-// 表单数据
 const form = reactive<ClassCreate>({
   name: '',
   grade: 1,
@@ -143,14 +134,12 @@ const form = reactive<ClassCreate>({
   academic_year: ''
 })
 
-// 验证规则
 const rules = reactive({
   name: [{ required: true, message: '请输入班级名称', trigger: 'blur' }],
   grade: [{ required: true, message: '请选择年级', trigger: 'change' }],
   academic_year: [{ required: true, message: '请输入学年', trigger: 'blur' }]
 })
 
-// 加载班级列表
 const loadClasses = async () => {
   loading.value = true
   try {
@@ -159,7 +148,7 @@ const loadClasses = async () => {
       page: currentPage.value,
       limit: pageSize.value,
       search: searchForm.value.search,
-      grade: searchForm.value.grade ? Number(searchForm.value.grade) : undefined
+      grade: searchForm.value.grade
     }
     const response = await classApi.list(query)
     console.log('Class API response:', response)
@@ -176,15 +165,14 @@ const loadClasses = async () => {
   }
 }
 
-// 加载教师列表
 const loadTeachers = async () => {
   teachersLoading.value = true
   try {
     console.log('Loading teachers...')
-    const response = await personApi.list({ 
-      page: 1, 
-      limit: 100, 
-      type: 'teacher' 
+    const response = await personApi.list({
+      page: 1,
+      limit: 100,
+      type: 'teacher'
     })
     console.log('Teachers API response:', response)
     teachers.value = response.data.items
@@ -197,13 +185,11 @@ const loadTeachers = async () => {
   }
 }
 
-// 搜索
 const handleSearch = () => {
   currentPage.value = 1
   loadClasses()
 }
 
-// 分页
 const handleSizeChange = (size: number) => {
   pageSize.value = size
   loadClasses()
@@ -214,9 +200,7 @@ const handleCurrentChange = (current: number) => {
   loadClasses()
 }
 
-// 新增
 const handleAdd = () => {
-  // 重置表单
   Object.assign(form, {
     name: '',
     grade: 1,
@@ -228,23 +212,20 @@ const handleAdd = () => {
   dialogVisible.value = true
 }
 
-// 编辑
 const handleEdit = async (row: ClassResponse) => {
   editingId.value = row.id
   dialogTitle.value = '编辑班级'
-  
-  // 填充表单数据
+
   Object.assign(form, {
     name: row.name,
     grade: row.grade,
     teacher_id: row.teacher_id || '',
     academic_year: row.academic_year
   })
-  
+
   dialogVisible.value = true
 }
 
-// 删除
 const handleDelete = async (id: string) => {
   try {
     await ElMessageBox.confirm('确定要删除该班级吗？', '警告', {
@@ -252,7 +233,7 @@ const handleDelete = async (id: string) => {
       cancelButtonText: '取消',
       type: 'warning'
     })
-    
+
     await classApi.delete(id)
     ElMessage.success('删除成功')
     loadClasses()
@@ -264,24 +245,21 @@ const handleDelete = async (id: string) => {
   }
 }
 
-// 提交
 const handleSubmit = async () => {
   if (!formRef.value) return
-  
+
   try {
     await formRef.value.validate()
     submitting.value = true
-    
+
     if (editingId.value) {
-      // 更新
       await classApi.update(editingId.value, form)
       ElMessage.success('更新成功')
     } else {
-      // 创建
       await classApi.create(form)
       ElMessage.success('创建成功')
     }
-    
+
     dialogVisible.value = false
     loadClasses()
   } catch (error) {
@@ -294,7 +272,6 @@ const handleSubmit = async () => {
   }
 }
 
-// 初始化
 onMounted(() => {
   loadClasses()
   loadTeachers()

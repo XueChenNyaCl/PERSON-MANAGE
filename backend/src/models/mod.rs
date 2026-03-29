@@ -1,5 +1,6 @@
 pub mod ai_action;
 pub mod attendance;
+pub mod chat;
 pub mod class;
 pub mod department;
 pub mod group;
