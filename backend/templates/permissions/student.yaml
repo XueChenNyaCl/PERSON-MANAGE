@@ -1,16 +1,18 @@
 permissions:
+  - permission: -person.view
+    priority: 15
   - permission: -person.view.detail
-    priority: 10
+    priority: 15
   - permission: -person.sensitive.view
-    priority: 10
+    priority: 15
   - permission: -person.create
-    priority: 10
+    priority: 15
   - permission: -person.update
-    priority: 10
+    priority: 15
   - permission: -person.update.status
-    priority: 10
+    priority: 15
   - permission: -person.delete
-    priority: 10
+    priority: 15
   - permission: -class.view.detail
     priority: 10
   - permission: -class.create
@@ -25,6 +27,8 @@ permissions:
     priority: 10
   - permission: -class.delete
     priority: 10
+  - permission: -department.view
+    priority: 15
   - permission: -department.create
     priority: 10
   - permission: -department.update
@@ -77,13 +81,5 @@ permissions:
     priority: 7
   - permission: ai.analyze
     priority: 7
-  - permission: chat.view
-    priority: 7
-  - permission: chat.send
-    priority: 7
-  - permission: -chat.manage
-    priority: 10
-  - permission: -chat.cross_class
-    priority: 10
   - permission: dashboard.view
     priority: 7

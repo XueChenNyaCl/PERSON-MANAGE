@@ -1,5 +1,5 @@
-use bcrypt::{hash, verify, DEFAULT_COST};
 use anyhow::anyhow;
+use bcrypt::{hash, verify, DEFAULT_COST};
 
 pub fn hash_password(password: &str) -> Result<String, anyhow::Error> {
     hash(password, DEFAULT_COST).map_err(|e| anyhow!(e))
@@ -18,12 +18,12 @@ mod tests {
         let password = "test_password_123";
         let hash_result = hash_password(password);
         assert!(hash_result.is_ok());
-        
+
         let hash = hash_result.unwrap();
         let verify_result = verify_password(password, &hash);
         assert!(verify_result.is_ok());
         assert!(verify_result.unwrap());
-        
+
         // 验证错误密码
         let wrong_password = "wrong_password";
         let verify_wrong_result = verify_password(wrong_password, &hash);

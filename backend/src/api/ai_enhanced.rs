@@ -1,17 +1,16 @@
 use axum::{extract::State, Extension, Json};
+use regex::Regex;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::{Column, PgPool, Row};
-use uuid::Uuid;
-use reqwest::Client;
-use regex::Regex;
 use std::time::Duration;
+use uuid::Uuid;
 
-use crate::api::routes::AppState;
-use crate::api::ai_actions::{AIActionRequest, AIActionExecutor, NameResolver, ResolutionResult};
+use crate::api::ai_actions::{AIActionExecutor, AIActionRequest, NameResolver, ResolutionResult};
 use crate::api::ai_data::{
-    ClassDataService, GroupDataService, DepartmentDataService, PersonDataService,
-    MarkdownFormatter
+    ClassDataService, DepartmentDataService, GroupDataService, MarkdownFormatter, PersonDataService,
 };
+use crate::api::routes::AppState;
 use crate::core::auth::Claims;
 use crate::core::error::AppError;
 use crate::core::permission::PermissionManager;
@@ -26,7 +25,7 @@ pub struct EnhancedChatRequest {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChatMessage {
-    pub role: String,  // user, assistant, system
+    pub role: String, // user, assistant, system
     pub content: String,
 }
 
@@ -76,32 +75,44 @@ impl SystemPromptTemplate {
     /// 获取增强版系统提示词
     pub fn get_enhanced_prompt(user_permissions: &[String]) -> String {
         let permissions_str = user_permissions.join(", ");
-        
+
         // 根据权限构建可用操作说明
         let mut action_descriptions = vec![];
-        
-        if user_permissions.iter().any(|p| p == "notice.create" || p == "notice.*") {
+
+        if user_permissions
+            .iter()
+            .any(|p| p == "notice.create" || p == "notice.*")
+        {
             action_descriptions.push(r#"**创建公告** (create_notice)
 - 用途：创建新的学校公告
 - 参数：title(标题), content(内容), target_type(目标类型: all/class/department/group), target_id(可选), is_important(是否重要)
 - 示例：{"action_type": "create_notice", "params": {"title": "期中考试通知", "content": "下周一进行期中考试", "target_type": "all"}, "reason": "发布考试通知"}"#);
         }
-        
-        if user_permissions.iter().any(|p| p == "group.create" || p == "group.*") {
+
+        if user_permissions
+            .iter()
+            .any(|p| p == "group.create" || p == "group.*")
+        {
             action_descriptions.push(r#"**创建小组** (create_group)
 - 用途：在指定班级创建新的小组
 - 参数：class_id(班级ID或名称), name(小组名称), description(描述,可选)
 - 示例：{"action_type": "create_group", "params": {"class_id": "一年级1班", "name": "学习小组1"}, "reason": "创建新学习小组"}"#);
         }
-        
-        if user_permissions.iter().any(|p| p == "group.update.score" || p == "group.update" || p == "group.*") {
+
+        if user_permissions
+            .iter()
+            .any(|p| p == "group.update.score" || p == "group.update" || p == "group.*")
+        {
             action_descriptions.push(r#"**更新小组积分** (update_group_score)
 - 用途：增加或减少小组积分
 - 参数：group_id(小组ID或名称), score_change(积分变化,正数增加负数减少), reason(原因)
 - 示例：{"action_type": "update_group_score", "params": {"group_id": "香芋组", "score_change": 10, "reason": "课堂表现优秀"}, "reason": "奖励优秀表现"}"#);
         }
-        
-        if user_permissions.iter().any(|p| p == "group.update.member" || p == "group.update" || p == "group.*") {
+
+        if user_permissions
+            .iter()
+            .any(|p| p == "group.update.member" || p == "group.update" || p == "group.*")
+        {
             action_descriptions.push(r#"**添加小组成员** (add_group_member)
 - 用途：向小组添加新成员
 - 参数：group_id(小组ID或名称), person_id(人员姓名或ID)
@@ -111,15 +122,21 @@ impl SystemPromptTemplate {
 - 参数：group_id(小组ID或名称), person_id(人员姓名或ID)
 - 示例：{"action_type": "remove_group_member", "params": {"group_id": "香芋组", "person_id": "小明"}, "reason": "移除成员"}"#);
         }
-        
-        if user_permissions.iter().any(|p| p == "attendance.create" || p == "attendance.*") {
+
+        if user_permissions
+            .iter()
+            .any(|p| p == "attendance.create" || p == "attendance.*")
+        {
             action_descriptions.push(r#"**创建考勤记录** (create_attendance)
 - 用途：为人员创建考勤记录
 - 参数：person_id(人员姓名或ID), date(日期,支持:今天/明天/昨天/YYYY-MM-DD), status(状态:出勤/迟到/缺勤/早退/请假或present/late/absent/early_leave/excused), time(时间,支持:现在/上午8点/下午3点/HH:MM), remark(备注,可选)
 - 示例：{"action_type": "create_attendance", "params": {"person_id": "小绿", "date": "今天", "status": "出勤", "time": "上午8点"}, "reason": "记录出勤"}"#);
         }
 
-        if user_permissions.iter().any(|p| p == "person.create" || p == "person.*") {
+        if user_permissions
+            .iter()
+            .any(|p| p == "person.create" || p == "person.*")
+        {
             action_descriptions.push(r#"**创建人员** (create_person)
     - 用途：创建学生/教师/家长
     - 参数：name(姓名), person_type(人员类型: student/teacher/parent), gender(0/1/2 或 男/女/未知)
@@ -133,21 +150,25 @@ impl SystemPromptTemplate {
     - 参数：items(数组，每项与create_person参数一致)
     - 示例：{"action_type": "create_persons_batch", "params": {"items": [{"name": "李四", "person_type": "student", "gender": 1, "student_no": "S2026002"}, {"name": "王老师", "person_type": "teacher", "gender": 2, "employee_no": "T2026001"}]}, "reason": "新学期人员批量导入"}"#);
         }
-        
-        if user_permissions.iter().any(|p| p == "score.create" || p == "score.*") {
+
+        if user_permissions
+            .iter()
+            .any(|p| p == "score.create" || p == "score.*")
+        {
             action_descriptions.push(r#"**添加个人积分** (create_score)
 - 用途：为人员添加个人表现积分
 - 参数：student_id(人员姓名或ID), reason(原因), value(积分值,整数)
 - 示例：{"action_type": "create_score", "params": {"student_id": "小绿", "reason": "大扫除优秀", "value": 10}, "reason": "奖励优秀表现"}"#);
         }
-        
+
         let actions_str = if action_descriptions.is_empty() {
             "当前用户没有可执行的操作权限。".to_string()
         } else {
             action_descriptions.join("\n\n")
         };
-        
-        format!(r#"你是一个学校管理系统的AI助手。你的任务是帮助用户查询和分析学校数据，并根据用户权限执行相应操作。
+
+        format!(
+            r#"你是一个学校管理系统的AI助手。你的任务是帮助用户查询和分析学校数据，并根据用户权限执行相应操作。
 
 ## 你的权限
 用户拥有以下权限: {}
@@ -336,12 +357,15 @@ AI:
 3. 可以适当总结和计算（如平均值、总数等）
 4. 使用中文回复用户
 
-现在，请根据以上规则回答用户的问题。"#, permissions_str, actions_str)
+现在，请根据以上规则回答用户的问题。"#,
+            permissions_str, actions_str
+        )
     }
-    
+
     /// 获取数据查询后的提示词
     pub fn get_data_analysis_prompt(query_result: &str, original_question: &str) -> String {
-        format!(r#"以下是通过数据库查询获取的原始数据（Markdown格式）：
+        format!(
+            r#"以下是通过数据库查询获取的原始数据（Markdown格式）：
 
 ```
 {}
@@ -354,7 +378,9 @@ AI:
 2. 数据已经过权限验证，用户有权查看
 3. 可以适当进行计算和总结
 4. 使用中文回复
-5. 如果数据为空，说明没有找到相关数据"#, query_result, original_question)
+5. 如果数据为空，说明没有找到相关数据"#,
+            query_result, original_question
+        )
     }
 }
 
@@ -380,7 +406,7 @@ impl AIResponseParser {
                 data: Some(serde_json::to_value(db_query).unwrap_or_default()),
             };
         }
-        
+
         // 检查是否有查询请求
         if let Some(query) = Self::extract_query(content) {
             return AIAction {
@@ -388,7 +414,7 @@ impl AIResponseParser {
                 data: Some(serde_json::to_value(query).unwrap_or_default()),
             };
         }
-        
+
         // 检查是否需要更多信息
         if content.contains("[AI_NEED_INFO]") {
             let info = content.replace("[AI_NEED_INFO]", "").trim().to_string();
@@ -397,7 +423,7 @@ impl AIResponseParser {
                 data: Some(serde_json::json!({"message": info})),
             };
         }
-        
+
         // 默认是直接回答
         let answer = content.replace("[AI_ANSWER]", "").trim().to_string();
         AIAction {
@@ -405,32 +431,32 @@ impl AIResponseParser {
             data: Some(serde_json::json!({"message": answer})),
         }
     }
-    
+
     /// 提取查询请求
     fn extract_query(content: &str) -> Option<AIQueryRequest> {
         // 使用正则表达式匹配 [AI_QUERY]...[/AI_QUERY] 格式
         let re = Regex::new(r"\[AI_QUERY\]\s*(\{[\s\S]*?\})\s*\[/AI_QUERY\]").ok()?;
-        
+
         if let Some(caps) = re.captures(content) {
             if let Some(json_str) = caps.get(1) {
                 return serde_json::from_str(json_str.as_str()).ok();
             }
         }
-        
+
         None
     }
-    
+
     /// 提取操作执行请求
     fn extract_action(content: &str) -> Option<AIActionRequest> {
         // 使用正则表达式匹配 [AI_ACTION]...[/AI_ACTION] 格式
         let re = Regex::new(r"\[AI_ACTION\]\s*(\{[\s\S]*?\})\s*\[/AI_ACTION\]").ok()?;
-        
+
         if let Some(caps) = re.captures(content) {
             if let Some(json_str) = caps.get(1) {
                 return serde_json::from_str(json_str.as_str()).ok();
             }
         }
-        
+
         None
     }
 
@@ -447,7 +473,7 @@ impl AIResponseParser {
 
         None
     }
-    
+
     /// 清理响应内容，移除标记
     pub fn clean_response(content: &str) -> String {
         content
@@ -500,9 +526,22 @@ impl AIDbQueryExecutor {
 
         // 禁止危险关键字（防止通过 CTE 等方式注入写操作）
         let forbidden_keywords = [
-            "insert ", "update ", "delete ", "drop ", "alter ", "create ",
-            "truncate ", "grant ", "revoke ", "vacuum ", "analyze ",
-            "reindex ", "refresh materialized", "comment on", "call ", "do $$",
+            "insert ",
+            "update ",
+            "delete ",
+            "drop ",
+            "alter ",
+            "create ",
+            "truncate ",
+            "grant ",
+            "revoke ",
+            "vacuum ",
+            "analyze ",
+            "reindex ",
+            "refresh materialized",
+            "comment on",
+            "call ",
+            "do $$",
         ];
         for keyword in forbidden_keywords {
             if lowered.contains(keyword) {
@@ -511,7 +550,9 @@ impl AIDbQueryExecutor {
         }
 
         // 强制限制返回行数，避免大结果集
-        let has_limit = Regex::new(r"(?i)\blimit\s+\d+").ok().is_some_and(|re| re.is_match(&normalized));
+        let has_limit = Regex::new(r"(?i)\blimit\s+\d+")
+            .ok()
+            .is_some_and(|re| re.is_match(&normalized));
         if !has_limit {
             normalized.push_str(" LIMIT 100");
         }
@@ -581,7 +622,10 @@ fn rewrite_query_by_user_intent(user_message: &str, query_req: &mut AIQueryReque
     if query_req.query_type == "overview" {
         if ask_teacher_detail {
             query_req.query_type = "person_list".to_string();
-            let mut params = query_req.params.take().unwrap_or_else(|| serde_json::json!({}));
+            let mut params = query_req
+                .params
+                .take()
+                .unwrap_or_else(|| serde_json::json!({}));
             if !params.is_object() {
                 params = serde_json::json!({});
             }
@@ -591,10 +635,16 @@ fn rewrite_query_by_user_intent(user_message: &str, query_req: &mut AIQueryReque
                     .or_insert_with(|| serde_json::json!(100));
             }
             query_req.params = Some(params);
-            query_req.reason = format!("{}（系统纠偏：用户明确请求老师信息，转为person_list/teacher）", query_req.reason);
+            query_req.reason = format!(
+                "{}（系统纠偏：用户明确请求老师信息，转为person_list/teacher）",
+                query_req.reason
+            );
         } else if ask_student_detail {
             query_req.query_type = "person_list".to_string();
-            let mut params = query_req.params.take().unwrap_or_else(|| serde_json::json!({}));
+            let mut params = query_req
+                .params
+                .take()
+                .unwrap_or_else(|| serde_json::json!({}));
             if !params.is_object() {
                 params = serde_json::json!({});
             }
@@ -604,7 +654,10 @@ fn rewrite_query_by_user_intent(user_message: &str, query_req: &mut AIQueryReque
                     .or_insert_with(|| serde_json::json!(100));
             }
             query_req.params = Some(params);
-            query_req.reason = format!("{}（系统纠偏：用户明确请求学生信息，转为person_list/student）", query_req.reason);
+            query_req.reason = format!(
+                "{}（系统纠偏：用户明确请求学生信息，转为person_list/student）",
+                query_req.reason
+            );
         }
     }
 }
@@ -618,31 +671,36 @@ impl DataQueryExecutor {
     ) -> Result<String, AppError> {
         // 检查权限
         let has_permission = match query_req.query_type.as_str() {
-            "class_list" | "class_detail" => {
-                user_permissions.iter().any(|p| p == "class.view" || p == "class.*")
-            }
-            "group_list" | "group_detail" => {
-                user_permissions.iter().any(|p| p == "group.view" || p == "group.*")
-            }
-            "department_list" | "department_detail" => {
-                user_permissions.iter().any(|p| p == "department.view" || p == "department.*")
-            }
-            "person_list" => {
-                user_permissions.iter().any(|p| p == "person.view" || p == "person.*")
-            }
-            "overview" => {
-                user_permissions.iter().any(|p| {
-                    p == "class.view" || p == "group.view" || p == "department.view" ||
-                    p == "class.*" || p == "group.*" || p == "department.*"
-                })
-            }
+            "class_list" | "class_detail" => user_permissions
+                .iter()
+                .any(|p| p == "class.view" || p == "class.*"),
+            "group_list" | "group_detail" => user_permissions
+                .iter()
+                .any(|p| p == "group.view" || p == "group.*"),
+            "department_list" | "department_detail" => user_permissions
+                .iter()
+                .any(|p| p == "department.view" || p == "department.*"),
+            "person_list" => user_permissions
+                .iter()
+                .any(|p| p == "person.view" || p == "person.*"),
+            "overview" => user_permissions.iter().any(|p| {
+                p == "class.view"
+                    || p == "group.view"
+                    || p == "department.view"
+                    || p == "class.*"
+                    || p == "group.*"
+                    || p == "department.*"
+            }),
             _ => false,
         };
-        
+
         if !has_permission {
-            return Err(AppError::Auth(format!("没有权限执行查询: {}", query_req.query_type)));
+            return Err(AppError::Auth(format!(
+                "没有权限执行查询: {}",
+                query_req.query_type
+            )));
         }
-        
+
         // 执行查询
         match query_req.query_type.as_str() {
             "class_list" => {
@@ -651,13 +709,14 @@ impl DataQueryExecutor {
                 Ok(MarkdownFormatter::format_class_list(&classes))
             }
             "class_detail" => {
-                let class_id = query_req.params
+                let class_id = query_req
+                    .params
                     .as_ref()
                     .and_then(|p| p.get("id"))
                     .and_then(|id| id.as_str())
                     .and_then(|id| Uuid::parse_str(id).ok())
                     .ok_or(AppError::InvalidInput("缺少班级ID".to_string()))?;
-                
+
                 let service = ClassDataService::new(pool.clone());
                 let detail = service.get_class_detail(class_id).await?;
                 Ok(MarkdownFormatter::format_class_detail(&detail))
@@ -668,12 +727,13 @@ impl DataQueryExecutor {
                 Ok(MarkdownFormatter::format_group_list(&groups))
             }
             "group_detail" => {
-                let group_id_str = query_req.params
+                let group_id_str = query_req
+                    .params
                     .as_ref()
                     .and_then(|p| p.get("id"))
                     .and_then(|id| id.as_str())
                     .ok_or(AppError::InvalidInput("缺少小组ID".to_string()))?;
-                
+
                 // 使用 NameResolver 解析小组名称
                 match NameResolver::resolve_group(pool, group_id_str).await? {
                     ResolutionResult::Single(id) => {
@@ -695,9 +755,7 @@ impl DataQueryExecutor {
                             candidates_info.join(", ")
                         )))
                     }
-                    ResolutionResult::NotFound(msg) => {
-                        Err(AppError::InvalidInput(msg))
-                    }
+                    ResolutionResult::NotFound(msg) => Err(AppError::InvalidInput(msg)),
                 }
             }
             "department_list" => {
@@ -706,26 +764,29 @@ impl DataQueryExecutor {
                 Ok(MarkdownFormatter::format_department_list(&departments))
             }
             "department_detail" => {
-                let dept_id = query_req.params
+                let dept_id = query_req
+                    .params
                     .as_ref()
                     .and_then(|p| p.get("id"))
                     .and_then(|id| id.as_str())
                     .and_then(|id| Uuid::parse_str(id).ok())
                     .ok_or(AppError::InvalidInput("缺少部门ID".to_string()))?;
-                
+
                 let service = DepartmentDataService::new(pool.clone());
                 let detail = service.get_department_detail(dept_id).await?;
                 Ok(MarkdownFormatter::format_department_detail(&detail))
             }
             "person_list" => {
-                let name_filter = query_req.params
+                let name_filter = query_req
+                    .params
                     .as_ref()
                     .and_then(|p| p.get("name"))
                     .and_then(|v| v.as_str())
                     .map(|s| s.trim())
                     .filter(|s| !s.is_empty());
 
-                let normalized_type = query_req.params
+                let normalized_type = query_req
+                    .params
                     .as_ref()
                     .and_then(|p| p.get("person_type"))
                     .and_then(|v| v.as_str())
@@ -738,7 +799,8 @@ impl DataQueryExecutor {
                         other => other.to_string(),
                     });
 
-                let limit = query_req.params
+                let limit = query_req
+                    .params
                     .as_ref()
                     .and_then(|p| p.get("limit"))
                     .and_then(|v| v.as_i64())
@@ -759,28 +821,44 @@ impl DataQueryExecutor {
                 let class_service = ClassDataService::new(pool.clone());
                 let group_service = GroupDataService::new(pool.clone());
                 let dept_service = DepartmentDataService::new(pool.clone());
-                
-                let classes = if user_permissions.iter().any(|p| p == "class.view" || p == "class.*") {
+
+                let classes = if user_permissions
+                    .iter()
+                    .any(|p| p == "class.view" || p == "class.*")
+                {
                     class_service.get_all_classes().await.unwrap_or_default()
                 } else {
                     Vec::new()
                 };
-                
-                let groups = if user_permissions.iter().any(|p| p == "group.view" || p == "group.*") {
+
+                let groups = if user_permissions
+                    .iter()
+                    .any(|p| p == "group.view" || p == "group.*")
+                {
                     group_service.get_all_groups().await.unwrap_or_default()
                 } else {
                     Vec::new()
                 };
-                
-                let departments = if user_permissions.iter().any(|p| p == "department.view" || p == "department.*") {
+
+                let departments = if user_permissions
+                    .iter()
+                    .any(|p| p == "department.view" || p == "department.*")
+                {
                     dept_service.get_all_departments().await.unwrap_or_default()
                 } else {
                     Vec::new()
                 };
-                
-                Ok(MarkdownFormatter::format_overview(&classes, &groups, &departments))
+
+                Ok(MarkdownFormatter::format_overview(
+                    &classes,
+                    &groups,
+                    &departments,
+                ))
             }
-            _ => Err(AppError::InvalidInput(format!("未知的查询类型: {}", query_req.query_type))),
+            _ => Err(AppError::InvalidInput(format!(
+                "未知的查询类型: {}",
+                query_req.query_type
+            ))),
         }
     }
 }
@@ -793,41 +871,41 @@ pub async fn enhanced_chat(
     Json(req): Json<EnhancedChatRequest>,
 ) -> Result<Json<EnhancedChatResponse>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
-    
+
     // 获取AI设置
     let settings = sqlx::query_as::<_, crate::api::ai::AISettings>(
         "SELECT api_key, api_base_url, model, default_prompt, temperature, max_tokens 
          FROM ai_settings 
          ORDER BY id DESC 
-         LIMIT 1"
+         LIMIT 1",
     )
     .fetch_optional(&pool)
     .await?
     .ok_or(AppError::NotFound)?;
-    
+
     // 获取用户权限
     let permission_manager = PermissionManager::new(pool.clone());
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Auth("无效的用户 ID".to_string()))?;
-    let user_permissions = permission_manager.get_user_permissions_list(user_id).await
+    let user_id =
+        Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户 ID".to_string()))?;
+    let user_permissions = permission_manager
+        .get_user_permissions_list(user_id)
+        .await
         .map_err(|_| AppError::Internal)?;
-    
+
     // 检查AI聊天权限
     if !user_permissions.iter().any(|p| p == "ai.chat") {
         return Err(AppError::Auth("没有 AI 聊天权限".to_string()));
     }
-    
+
     // 构建系统提示词
     let system_prompt = SystemPromptTemplate::get_enhanced_prompt(&user_permissions);
-    
+
     // 构建消息列表
-    let mut messages = vec![
-        crate::api::ai::AIChatMessage {
-            role: "system".to_string(),
-            content: system_prompt.clone(),
-        }
-    ];
-    
+    let mut messages = vec![crate::api::ai::AIChatMessage {
+        role: "system".to_string(),
+        content: system_prompt.clone(),
+    }];
+
     // 添加历史消息
     for msg in req.conversation_history {
         messages.push(crate::api::ai::AIChatMessage {
@@ -835,19 +913,19 @@ pub async fn enhanced_chat(
             content: msg.content,
         });
     }
-    
+
     // 添加当前用户消息
     messages.push(crate::api::ai::AIChatMessage {
         role: "user".to_string(),
         content: req.message.clone(),
     });
-    
+
     // 克隆需要的设置值
     let model = settings.model.clone();
     let temperature = settings.temperature;
     let max_tokens = settings.max_tokens;
     let api_key = settings.api_key.clone();
-    
+
     // 调用AI API
     let api_request = crate::api::ai::AIChatRequest {
         model: model.clone(),
@@ -856,13 +934,13 @@ pub async fn enhanced_chat(
         max_tokens,
         stream: false,
     };
-    
+
     // 创建带超时的HTTP客户端（单次AI请求最多30秒）
     let client = Client::builder()
         .timeout(Duration::from_secs(30))
         .build()
         .map_err(|e| AppError::InternalWithMessage(format!("创建HTTP客户端失败: {}", e)))?;
-    
+
     let mut api_url = settings.api_base_url.clone();
     if !api_url.ends_with("/v1/chat/completions") && !api_url.ends_with("/v1/chat/completions/") {
         if !api_url.ends_with('/') {
@@ -870,7 +948,7 @@ pub async fn enhanced_chat(
         }
         api_url.push_str("v1/chat/completions");
     }
-    
+
     let response = client
         .post(&api_url)
         .header("Content-Type", "application/json")
@@ -879,26 +957,33 @@ pub async fn enhanced_chat(
         .send()
         .await
         .map_err(|e| AppError::InternalWithMessage(format!("AI API 请求失败: {}", e)))?;
-    
+
     if !response.status().is_success() {
         let status = response.status();
-        let error_text = response.text().await.unwrap_or_else(|_| "无法读取错误响应".to_string());
-        return Err(AppError::InternalWithMessage(format!("AI API 返回错误: {} - {}", status, error_text)));
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "无法读取错误响应".to_string());
+        return Err(AppError::InternalWithMessage(format!(
+            "AI API 返回错误: {} - {}",
+            status, error_text
+        )));
     }
-    
+
     let api_response: crate::api::ai::AIChatResponse = response
         .json()
         .await
         .map_err(|e| AppError::InternalWithMessage(format!("解析 AI API 响应失败: {}", e)))?;
-    
-    let ai_content = api_response.choices
+
+    let ai_content = api_response
+        .choices
         .first()
         .map(|choice| choice.message.content.clone())
         .unwrap_or_else(|| "AI 没有返回有效回复".to_string());
-    
+
     // 解析AI响应
     let action = AIResponseParser::parse_response(&ai_content);
-    
+
     // 根据操作类型处理
     match action.action.as_str() {
         "db_query" => {
@@ -910,10 +995,11 @@ pub async fn enhanced_chat(
                         match AIDbQueryExecutor::execute(&pool, &db_query_req).await {
                             Ok(query_result) => {
                                 // 查询成功后，继续让AI分析并自然语言回复
-                                let analysis_prompt = SystemPromptTemplate::get_data_analysis_prompt(
-                                    &query_result,
-                                    &req.message,
-                                );
+                                let analysis_prompt =
+                                    SystemPromptTemplate::get_data_analysis_prompt(
+                                        &query_result,
+                                        &req.message,
+                                    );
 
                                 let analysis_messages = vec![
                                     crate::api::ai::AIChatMessage {
@@ -941,17 +1027,30 @@ pub async fn enhanced_chat(
                                     .json(&analysis_request)
                                     .send()
                                     .await
-                                    .map_err(|e| AppError::InternalWithMessage(format!("AI API 请求失败: {}", e)))?;
+                                    .map_err(|e| {
+                                        AppError::InternalWithMessage(format!(
+                                            "AI API 请求失败: {}",
+                                            e
+                                        ))
+                                    })?;
 
                                 if analysis_response.status().is_success() {
-                                    let analysis_result: crate::api::ai::AIChatResponse = analysis_response
-                                        .json()
-                                        .await
-                                        .map_err(|e| AppError::InternalWithMessage(format!("解析 AI API 响应失败: {}", e)))?;
+                                    let analysis_result: crate::api::ai::AIChatResponse =
+                                        analysis_response.json().await.map_err(|e| {
+                                            AppError::InternalWithMessage(format!(
+                                                "解析 AI API 响应失败: {}",
+                                                e
+                                            ))
+                                        })?;
 
-                                    let final_content = analysis_result.choices
+                                    let final_content = analysis_result
+                                        .choices
                                         .first()
-                                        .map(|choice| AIResponseParser::clean_response(&choice.message.content))
+                                        .map(|choice| {
+                                            AIResponseParser::clean_response(
+                                                &choice.message.content,
+                                            )
+                                        })
                                         .unwrap_or_else(|| query_result.clone());
 
                                     return Ok(Json(EnhancedChatResponse {
@@ -987,8 +1086,7 @@ pub async fn enhanced_chat(
 错误原因：{}\n\
 这是第 {}/3 次尝试失败。\n\
 请仅返回一个新的 [AI_DB_QUERY] JSON 请求，修复以上问题，不要输出其他文本。",
-                                    last_error,
-                                    attempt
+                                    last_error, attempt
                                 );
 
                                 let retry_messages = vec![
@@ -1004,7 +1102,8 @@ pub async fn enhanced_chat(
                                         role: "assistant".to_string(),
                                         content: format!(
                                             "[AI_DB_QUERY]\n{}\n[/AI_DB_QUERY]",
-                                            serde_json::to_string_pretty(&db_query_req).unwrap_or_default()
+                                            serde_json::to_string_pretty(&db_query_req)
+                                                .unwrap_or_default()
                                         ),
                                     },
                                     crate::api::ai::AIChatMessage {
@@ -1028,7 +1127,12 @@ pub async fn enhanced_chat(
                                     .json(&retry_request)
                                     .send()
                                     .await
-                                    .map_err(|e| AppError::InternalWithMessage(format!("AI API 请求失败: {}", e)))?;
+                                    .map_err(|e| {
+                                        AppError::InternalWithMessage(format!(
+                                            "AI API 请求失败: {}",
+                                            e
+                                        ))
+                                    })?;
 
                                 if !retry_response.status().is_success() {
                                     let status = retry_response.status();
@@ -1046,10 +1150,13 @@ pub async fn enhanced_chat(
                                     }));
                                 }
 
-                                let retry_ai_resp: crate::api::ai::AIChatResponse = retry_response
-                                    .json()
-                                    .await
-                                    .map_err(|e| AppError::InternalWithMessage(format!("解析 AI API 响应失败: {}", e)))?;
+                                let retry_ai_resp: crate::api::ai::AIChatResponse =
+                                    retry_response.json().await.map_err(|e| {
+                                        AppError::InternalWithMessage(format!(
+                                            "解析 AI API 响应失败: {}",
+                                            e
+                                        ))
+                                    })?;
 
                                 let retry_content = retry_ai_resp
                                     .choices
@@ -1080,7 +1187,8 @@ pub async fn enhanced_chat(
                                     }));
                                 };
 
-                                let parsed_retry_req = serde_json::from_value::<AIDbQueryRequest>(retry_data);
+                                let parsed_retry_req =
+                                    serde_json::from_value::<AIDbQueryRequest>(retry_data);
                                 match parsed_retry_req {
                                     Ok(next_req) => {
                                         db_query_req = next_req;
@@ -1135,10 +1243,10 @@ pub async fn enhanced_chat(
                         Ok(query_result) => {
                             // 构建第二次AI请求，让AI分析数据
                             let analysis_prompt = SystemPromptTemplate::get_data_analysis_prompt(
-                                &query_result, 
-                                &req.message
+                                &query_result,
+                                &req.message,
                             );
-                            
+
                             let analysis_messages = vec![
                                 crate::api::ai::AIChatMessage {
                                     role: "system".to_string(),
@@ -1149,7 +1257,7 @@ pub async fn enhanced_chat(
                                     content: "请分析以上数据并回答我的问题".to_string(),
                                 },
                             ];
-                            
+
                             let analysis_request = crate::api::ai::AIChatRequest {
                                 model: model.clone(),
                                 messages: analysis_messages,
@@ -1157,7 +1265,7 @@ pub async fn enhanced_chat(
                                 max_tokens,
                                 stream: false,
                             };
-                            
+
                             let analysis_response = client
                                 .post(&api_url)
                                 .header("Content-Type", "application/json")
@@ -1165,26 +1273,34 @@ pub async fn enhanced_chat(
                                 .json(&analysis_request)
                                 .send()
                                 .await
-                                .map_err(|e| AppError::InternalWithMessage(format!("AI API 请求失败: {}", e)))?;
-                            
+                                .map_err(|e| {
+                                    AppError::InternalWithMessage(format!("AI API 请求失败: {}", e))
+                                })?;
+
                             if analysis_response.status().is_success() {
-                                let analysis_result: crate::api::ai::AIChatResponse = analysis_response
-                                    .json()
-                                    .await
-                                    .map_err(|e| AppError::InternalWithMessage(format!("解析 AI API 响应失败: {}", e)))?;
-                                
-                                let final_content = analysis_result.choices
+                                let analysis_result: crate::api::ai::AIChatResponse =
+                                    analysis_response.json().await.map_err(|e| {
+                                        AppError::InternalWithMessage(format!(
+                                            "解析 AI API 响应失败: {}",
+                                            e
+                                        ))
+                                    })?;
+
+                                let final_content = analysis_result
+                                    .choices
                                     .first()
-                                    .map(|choice| AIResponseParser::clean_response(&choice.message.content))
+                                    .map(|choice| {
+                                        AIResponseParser::clean_response(&choice.message.content)
+                                    })
                                     .unwrap_or_else(|| query_result);
-                                
+
                                 return Ok(Json(EnhancedChatResponse {
                                     data: final_content,
                                     query_executed: true,
                                     query_type: Some(query_req.query_type),
                                 }));
                             }
-                            
+
                             // 如果第二次请求失败，直接返回查询结果
                             Ok(Json(EnhancedChatResponse {
                                 data: query_result,
@@ -1223,31 +1339,32 @@ pub async fn enhanced_chat(
             if let Some(data) = action.data {
                 if let Ok(action_req) = serde_json::from_value::<AIActionRequest>(data) {
                     // 获取用户名称
-                    let user_name: String = sqlx::query_scalar(
-                        "SELECT name FROM persons WHERE id = $1"
-                    )
-                    .bind(user_id)
-                    .fetch_one(&pool)
-                    .await
-                    .unwrap_or_else(|_| "未知用户".to_string());
-                    
+                    let user_name: String =
+                        sqlx::query_scalar("SELECT name FROM persons WHERE id = $1")
+                            .bind(user_id)
+                            .fetch_one(&pool)
+                            .await
+                            .unwrap_or_else(|_| "未知用户".to_string());
+
                     // 执行操作
                     match AIActionExecutor::execute(&pool, &action_req, user_id, &user_name).await {
                         Ok(action_result) => {
                             if action_result.success {
                                 // 操作成功，构建成功提示
-                                let success_prompt = format!(r#"你刚刚成功执行了一个操作。
+                                let success_prompt = format!(
+                                    r#"你刚刚成功执行了一个操作。
 
 操作结果：
 {}
 
 用户原始请求："{}"
 
-请用友好、简洁的方式告知用户操作已成功完成，并简要说明操作结果。使用 [AI_ANSWER] 标记开始你的回复。"#, 
-                                    serde_json::to_string_pretty(&action_result.data).unwrap_or_default(),
+请用友好、简洁的方式告知用户操作已成功完成，并简要说明操作结果。使用 [AI_ANSWER] 标记开始你的回复。"#,
+                                    serde_json::to_string_pretty(&action_result.data)
+                                        .unwrap_or_default(),
                                     req.message
                                 );
-                                
+
                                 let success_messages = vec![
                                     crate::api::ai::AIChatMessage {
                                         role: "system".to_string(),
@@ -1258,7 +1375,7 @@ pub async fn enhanced_chat(
                                         content: "请告诉我操作结果".to_string(),
                                     },
                                 ];
-                                
+
                                 let success_request = crate::api::ai::AIChatRequest {
                                     model: model.clone(),
                                     messages: success_messages,
@@ -1266,7 +1383,7 @@ pub async fn enhanced_chat(
                                     max_tokens,
                                     stream: false,
                                 };
-                                
+
                                 let success_response = client
                                     .post(&api_url)
                                     .header("Content-Type", "application/json")
@@ -1274,35 +1391,50 @@ pub async fn enhanced_chat(
                                     .json(&success_request)
                                     .send()
                                     .await
-                                    .map_err(|e| AppError::InternalWithMessage(format!("AI API 请求失败: {}", e)))?;
-                                
+                                    .map_err(|e| {
+                                        AppError::InternalWithMessage(format!(
+                                            "AI API 请求失败: {}",
+                                            e
+                                        ))
+                                    })?;
+
                                 if success_response.status().is_success() {
-                                    let success_result: crate::api::ai::AIChatResponse = success_response
-                                        .json()
-                                        .await
-                                        .map_err(|e| AppError::InternalWithMessage(format!("解析 AI API 响应失败: {}", e)))?;
-                                    
-                                    let final_content = success_result.choices
+                                    let success_result: crate::api::ai::AIChatResponse =
+                                        success_response.json().await.map_err(|e| {
+                                            AppError::InternalWithMessage(format!(
+                                                "解析 AI API 响应失败: {}",
+                                                e
+                                            ))
+                                        })?;
+
+                                    let final_content = success_result
+                                        .choices
                                         .first()
-                                        .map(|choice| AIResponseParser::clean_response(&choice.message.content))
+                                        .map(|choice| {
+                                            AIResponseParser::clean_response(
+                                                &choice.message.content,
+                                            )
+                                        })
                                         .unwrap_or_else(|| action_result.message.clone());
 
                                     let segmented_content = format!(
                                         "[[AI_SEGMENT]]✅ 操作已执行：{}\n[[AI_SEGMENT]]{}",
-                                        action_result.message,
-                                        final_content
+                                        action_result.message, final_content
                                     );
-                                    
+
                                     return Ok(Json(EnhancedChatResponse {
                                         data: segmented_content,
                                         query_executed: true,
                                         query_type: Some(action_req.action_type),
                                     }));
                                 }
-                                
+
                                 // 如果第二次请求失败，直接返回操作结果
                                 Ok(Json(EnhancedChatResponse {
-                                    data: format!("[[AI_SEGMENT]]✅ 操作已执行：{}", action_result.message),
+                                    data: format!(
+                                        "[[AI_SEGMENT]]✅ 操作已执行：{}",
+                                        action_result.message
+                                    ),
                                     query_executed: true,
                                     query_type: Some(action_req.action_type),
                                 }))
@@ -1343,10 +1475,14 @@ pub async fn enhanced_chat(
         }
         "need_more_info" => {
             // AI需要更多信息
-            let message = action.data
-                .and_then(|d| d.get("message").and_then(|m| m.as_str().map(|s| s.to_string())))
+            let message = action
+                .data
+                .and_then(|d| {
+                    d.get("message")
+                        .and_then(|m| m.as_str().map(|s| s.to_string()))
+                })
                 .unwrap_or_else(|| "我需要更多信息才能回答你的问题".to_string());
-            
+
             Ok(Json(EnhancedChatResponse {
                 data: message,
                 query_executed: false,
@@ -1355,10 +1491,14 @@ pub async fn enhanced_chat(
         }
         _ => {
             // 直接回答
-            let final_answer = action.data
-                .and_then(|d| d.get("message").and_then(|m| m.as_str().map(|s| s.to_string())))
+            let final_answer = action
+                .data
+                .and_then(|d| {
+                    d.get("message")
+                        .and_then(|m| m.as_str().map(|s| s.to_string()))
+                })
                 .unwrap_or_else(|| AIResponseParser::clean_response(&ai_content));
-            
+
             Ok(Json(EnhancedChatResponse {
                 data: final_answer,
                 query_executed: false,

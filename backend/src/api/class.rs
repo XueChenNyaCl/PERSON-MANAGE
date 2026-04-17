@@ -11,6 +11,7 @@ use crate::core::auth::Claims;
 use crate::core::data_scope::{ensure_class_access, get_accessible_class_ids};
 use crate::core::error::AppError;
 use crate::core::permission::PermissionManager;
+use crate::core::redis::cache::CacheKey;
 use crate::models::class::{Class, ClassCreate, ClassResponse, ClassUpdate};
 
 #[derive(Debug, Deserialize)]
@@ -37,34 +38,71 @@ pub async fn list(
     let page = query.page.unwrap_or(1);
     let limit = query.limit.unwrap_or(20);
 
-    if let Some(pool) = state.pool {
-        let user_id = Uuid::parse_str(&claims.sub)
-            .map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
-        let accessible_class_ids = get_accessible_class_ids(&pool, user_id, &claims.role).await?;
-        let (items, total) = list_classes(
-            &pool,
-            query.search.as_deref(),
-            query.grade,
-            page,
-            limit,
-            &accessible_class_ids,
-        )
-        .await?;
+    let pool = state.pool.ok_or_else(|| AppError::Internal)?;
 
-        Ok(Json(ListResponse {
-            items,
-            total,
-            page,
-            limit,
-        }))
-    } else {
-        Ok(Json(ListResponse {
-            items: Vec::new(),
-            total: 0,
-            page,
-            limit,
-        }))
+    let user_id =
+        Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let accessible_class_ids = get_accessible_class_ids(&pool, user_id, &claims.role).await?;
+
+    // 优先使用 DatabaseService（带缓存）
+    if let Some(db_service) = &state.db_service {
+        let cache_key = CacheKey::classes_list(Some(&format!(
+            "{}:{}:{:?}:{:?}",
+            page, limit, query.search, query.grade
+        )));
+
+        // 尝试从缓存获取
+        match db_service
+            .query_cached::<Vec<ClassResponse>>(&cache_key)
+            .await
+        {
+            Ok(Some(cached)) => {
+                tracing::trace!("Cache hit for classes list: {}", cache_key);
+                let total = cached.len() as i64;
+                return Ok(Json(ListResponse {
+                    items: cached,
+                    total,
+                    page,
+                    limit,
+                }));
+            }
+            Ok(None) => {
+                tracing::trace!("Cache miss for classes list: {}", cache_key);
+            }
+            Err(e) => {
+                tracing::warn!("Cache read error: {}, falling back to database", e);
+            }
+        }
     }
+
+    // 回退到直接数据库查询
+    let (items, total) = list_classes(
+        &pool,
+        query.search.as_deref(),
+        query.grade,
+        page,
+        limit,
+        &accessible_class_ids,
+    )
+    .await?;
+
+    // 写入缓存
+    if let Some(db_service) = &state.db_service {
+        let cache_key = CacheKey::classes_list(Some(&format!(
+            "{}:{}:{:?}:{:?}",
+            page, limit, query.search, query.grade
+        )));
+        if let Err(e) = db_service.cache_set(&cache_key, &items, None).await {
+            tracing::warn!("Failed to cache classes list: {}", e);
+        }
+    }
+
+    Ok(Json(ListResponse {
+        items,
+        total,
+        page,
+        limit,
+    }))
 }
 
 pub async fn create(
@@ -73,7 +111,50 @@ pub async fn create(
 ) -> Result<Json<ClassResponse>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
 
+    // 尝试使用写入缓冲（如果可用）
+    if let Some(db_service) = &state.db_service {
+        if let Some(buffer) = db_service.get_write_buffer() {
+            let class_data = serde_json::to_value(&payload)
+                .map_err(|e| AppError::InternalWithMessage(format!("序列化失败: {}", e)))?;
+
+            match buffer.buffer_insert("classes", class_data).await {
+                Ok(_) => {
+                    tracing::info!("Class creation buffered successfully");
+                    // 使班级列表缓存失效
+                    if let Err(e) = db_service.invalidate_entity_cache("classes", None).await {
+                        tracing::warn!("Failed to invalidate classes cache after buffer: {}", e);
+                    }
+                    // 返回临时响应
+                    return Ok(Json(ClassResponse {
+                        id: Uuid::new_v4(),
+                        name: payload.name.clone(),
+                        grade: payload.grade as i16,
+                        teacher_id: payload.teacher_id.and_then(|s| Uuid::parse_str(&s).ok()),
+                        teacher_name: None,
+                        academic_year: payload.academic_year.clone(),
+                        created_at: chrono::Utc::now(),
+                    }));
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to buffer class creation, falling back to immediate: {}",
+                        e
+                    );
+                }
+            }
+        }
+    }
+
+    // 直接写入数据库（回退方案）
     let class = create_class(&pool, payload).await?;
+
+    // 使班级列表缓存失效
+    if let Some(db_service) = &state.db_service {
+        if let Err(e) = db_service.invalidate_entity_cache("classes", None).await {
+            tracing::warn!("Failed to invalidate classes cache after create: {}", e);
+        }
+    }
+
     Ok(Json(class))
 }
 
@@ -83,11 +164,41 @@ pub async fn get(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ClassResponse>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
-    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let user_id =
+        Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
 
     ensure_class_access(&pool, user_id, &claims.role, id).await?;
 
+    // 优先使用 DatabaseService（带缓存）
+    if let Some(db_service) = &state.db_service {
+        let cache_key = CacheKey::class(&id.to_string());
+
+        // 尝试从缓存获取
+        match db_service.query_cached::<ClassResponse>(&cache_key).await {
+            Ok(Some(cached)) => {
+                tracing::trace!("Cache hit for class: {}", cache_key);
+                return Ok(Json(cached));
+            }
+            Ok(None) => {
+                tracing::trace!("Cache miss for class: {}", cache_key);
+            }
+            Err(e) => {
+                tracing::warn!("Cache read error: {}, falling back to database", e);
+            }
+        }
+    }
+
+    // 回退到直接数据库查询
     let class = get_class(&pool, id).await?;
+
+    // 写入缓存
+    if let Some(db_service) = &state.db_service {
+        let cache_key = CacheKey::class(&id.to_string());
+        if let Err(e) = db_service.cache_set(&cache_key, &class, None).await {
+            tracing::warn!("Failed to cache class: {}", e);
+        }
+    }
+
     Ok(Json(class))
 }
 
@@ -98,16 +209,64 @@ pub async fn update(
     Json(payload): Json<ClassUpdate>,
 ) -> Result<Json<ClassResponse>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
-    
+
     // 检查权限：如果尝试更新班主任，需要class.update_teacher权限
     if payload.teacher_id.is_some() {
         // 使用新的权限系统检查用户是否有class.update_teacher权限
-        let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+        let user_id =
+            Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
         let manager = PermissionManager::new(pool.clone());
-        manager.require_permission(user_id, "class.update_teacher").await?;
+        manager
+            .require_permission(user_id, "class.update_teacher")
+            .await?;
     }
-    
+
+    // 尝试使用写入缓冲（如果可用）
+    if let Some(db_service) = &state.db_service {
+        if let Some(buffer) = db_service.get_write_buffer() {
+            let update_data = serde_json::to_value(&payload)
+                .map_err(|e| AppError::InternalWithMessage(format!("序列化失败: {}", e)))?;
+
+            match buffer
+                .buffer_update("classes", &id.to_string(), update_data)
+                .await
+            {
+                Ok(_) => {
+                    tracing::info!("Class update buffered successfully: {}", id);
+                    // 使缓存失效
+                    if let Err(e) = db_service
+                        .invalidate_entity_cache("classes", Some(&id.to_string()))
+                        .await
+                    {
+                        tracing::warn!("Failed to invalidate class cache after buffer: {}", e);
+                    }
+                    // 返回更新后的班级信息（从数据库获取最新数据或构造临时响应）
+                    let class = get_class(&pool, id).await?;
+                    return Ok(Json(class));
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to buffer class update, falling back to immediate: {}",
+                        e
+                    );
+                }
+            }
+        }
+    }
+
+    // 直接更新数据库（回退方案）
     let class = update_class(&pool, id, payload).await?;
+
+    // 使缓存失效
+    if let Some(db_service) = &state.db_service {
+        if let Err(e) = db_service
+            .invalidate_entity_cache("classes", Some(&id.to_string()))
+            .await
+        {
+            tracing::warn!("Failed to invalidate class cache after update: {}", e);
+        }
+    }
+
     Ok(Json(class))
 }
 
@@ -117,13 +276,51 @@ pub async fn delete(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
-    
+
     // 检查删除班级权限
-    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let user_id =
+        Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
     let manager = PermissionManager::new(pool.clone());
     manager.require_permission(user_id, "class.delete").await?;
 
+    // 尝试使用写入缓冲（如果可用）
+    if let Some(db_service) = &state.db_service {
+        if let Some(buffer) = db_service.get_write_buffer() {
+            match buffer.buffer_delete("classes", &id.to_string()).await {
+                Ok(_) => {
+                    tracing::info!("Class deletion buffered successfully: {}", id);
+                    // 使缓存失效
+                    if let Err(e) = db_service
+                        .invalidate_entity_cache("classes", Some(&id.to_string()))
+                        .await
+                    {
+                        tracing::warn!("Failed to invalidate class cache after buffer: {}", e);
+                    }
+                    return Ok(StatusCode::NO_CONTENT);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to buffer class deletion, falling back to immediate: {}",
+                        e
+                    );
+                }
+            }
+        }
+    }
+
+    // 直接删除数据库（回退方案）
     delete_class(&pool, id).await?;
+
+    // 使缓存失效
+    if let Some(db_service) = &state.db_service {
+        if let Err(e) = db_service
+            .invalidate_entity_cache("classes", Some(&id.to_string()))
+            .await
+        {
+            tracing::warn!("Failed to invalidate class cache after delete: {}", e);
+        }
+    }
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -134,7 +331,8 @@ pub async fn get_class_students(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<PersonResponse>>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
-    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let user_id =
+        Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
 
     ensure_class_access(&pool, user_id, &claims.role, id).await?;
 
@@ -149,7 +347,8 @@ pub async fn get_class_teachers(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<PersonResponse>>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
-    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let user_id =
+        Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
 
     ensure_class_access(&pool, user_id, &claims.role, id).await?;
 
@@ -175,21 +374,24 @@ async fn get_class_students_list(
     .fetch_all(pool)
     .await?;
 
-    let students: Vec<PersonResponse> = rows.into_iter().map(|row| {
-        PersonResponse::Student(StudentResponse {
-            id: row.id,
-            name: row.name,
-            gender: row.gender,
-            birthday: row.birthday,
-            phone: row.phone,
-            email: row.email,
-            student_no: row.student_no,
-            class_id: Some(class_id),
-            class_name: None, // 需要额外查询
-            enrollment_date: row.enrollment_date,
-            status: row.status.expect("Student status is required")
+    let students: Vec<PersonResponse> = rows
+        .into_iter()
+        .map(|row| {
+            PersonResponse::Student(StudentResponse {
+                id: row.id,
+                name: row.name,
+                gender: row.gender,
+                birthday: row.birthday,
+                phone: row.phone,
+                email: row.email,
+                student_no: row.student_no,
+                class_id: Some(class_id),
+                class_name: None, // 需要额外查询
+                enrollment_date: row.enrollment_date,
+                status: row.status.expect("Student status is required"),
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(students)
 }
@@ -212,22 +414,25 @@ async fn get_class_teachers_list(
     .fetch_all(pool)
     .await?;
 
-    let teachers: Vec<PersonResponse> = rows.into_iter().map(|row| {
-        PersonResponse::Teacher(TeacherResponse {
-            id: row.id,
-            name: row.name,
-            gender: row.gender,
-            birthday: row.birthday,
-            phone: row.phone,
-            email: row.email,
-            employee_no: row.employee_no,
-            department_id: row.department_id,
-            department_name: None, // 需要额外查询
-            classes: Vec::new(), // 需要额外查询
-            title: row.title,
-            hire_date: row.hire_date
+    let teachers: Vec<PersonResponse> = rows
+        .into_iter()
+        .map(|row| {
+            PersonResponse::Teacher(TeacherResponse {
+                id: row.id,
+                name: row.name,
+                gender: row.gender,
+                birthday: row.birthday,
+                phone: row.phone,
+                email: row.email,
+                employee_no: row.employee_no,
+                department_id: row.department_id,
+                department_name: None, // 需要额外查询
+                classes: Vec::new(),   // 需要额外查询
+                title: row.title,
+                hire_date: row.hire_date,
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(teachers)
 }
@@ -248,7 +453,8 @@ async fn list_classes(
 
     let offset = (page - 1) * limit;
 
-    let mut total_builder: QueryBuilder<Postgres> = QueryBuilder::new("SELECT COUNT(*)::bigint AS total FROM classes c WHERE c.id IN (");
+    let mut total_builder: QueryBuilder<Postgres> =
+        QueryBuilder::new("SELECT COUNT(*)::bigint AS total FROM classes c WHERE c.id IN (");
     {
         let mut separated = total_builder.separated(", ");
         for class_id in accessible_class_ids {
@@ -257,7 +463,9 @@ async fn list_classes(
     }
     total_builder.push(")");
     if let Some(s) = search {
-        total_builder.push(" AND c.name ILIKE ").push_bind(format!("%{}%", s));
+        total_builder
+            .push(" AND c.name ILIKE ")
+            .push_bind(format!("%{}%", s));
     }
     if let Some(g) = grade {
         total_builder.push(" AND c.grade = ").push_bind(g);
@@ -279,7 +487,9 @@ async fn list_classes(
     }
     rows_builder.push(")");
     if let Some(s) = search {
-        rows_builder.push(" AND c.name ILIKE ").push_bind(format!("%{}%", s));
+        rows_builder
+            .push(" AND c.name ILIKE ")
+            .push_bind(format!("%{}%", s));
     }
     if let Some(g) = grade {
         rows_builder.push(" AND c.grade = ").push_bind(g);
@@ -290,7 +500,10 @@ async fn list_classes(
         .push(" OFFSET ")
         .push_bind(offset);
 
-    let rows = rows_builder.build_query_as::<ClassWithTeacher>().fetch_all(pool).await?;
+    let rows = rows_builder
+        .build_query_as::<ClassWithTeacher>()
+        .fetch_all(pool)
+        .await?;
 
     let items: Vec<ClassResponse> = rows.into_iter().map(|row| row.into_response()).collect();
 
@@ -322,9 +535,11 @@ async fn create_class(
 
     // Convert i32 grade to i16 for database
     let grade = payload.grade as i16;
-    
+
     // Convert string teacher_id to Uuid if provided
-    let teacher_id = payload.teacher_id.and_then(|id_str| Uuid::parse_str(&id_str).ok());
+    let teacher_id = payload
+        .teacher_id
+        .and_then(|id_str| Uuid::parse_str(&id_str).ok());
 
     sqlx::query(
         "INSERT INTO classes (id, name, grade, teacher_id, academic_year)
@@ -351,7 +566,7 @@ async fn create_class(
         .bind(id)
         .execute(&mut *tx)
         .await?;
-        
+
         // 清除该班级其他老师的班主任标志
         sqlx::query(
             "UPDATE teacher_class SET is_main_teacher = false 
@@ -361,10 +576,12 @@ async fn create_class(
         .bind(teacher_id)
         .execute(&mut *tx)
         .await?;
-        
+
         // 为新班主任植入班级特定权限
         let permission_manager = PermissionManager::new(pool.clone());
-        permission_manager.add_class_permissions_for_teacher(teacher_id, id).await
+        permission_manager
+            .add_class_permissions_for_teacher(teacher_id, id)
+            .await
             .map_err(|e| AppError::InternalWithMessage(format!("植入权限失败: {}", e)))?;
     }
 
@@ -378,7 +595,7 @@ async fn update_class(
     payload: ClassUpdate,
 ) -> Result<ClassResponse, AppError> {
     let mut tx = pool.begin().await?;
-    
+
     // 获取原班级信息（用于处理班主任变更）
     let old_class = sqlx::query_as::<_, Class>("SELECT * FROM classes WHERE id = $1")
         .bind(id)
@@ -402,20 +619,23 @@ async fn update_class(
             .execute(&mut *tx)
             .await?;
     }
-    
+
     // 处理班主任变更
     if payload.teacher_id.is_some() {
         // Convert string teacher_id to Uuid if provided
-        let new_teacher_id = payload.teacher_id.as_ref().and_then(|id_str| Uuid::parse_str(id_str).ok());
+        let new_teacher_id = payload
+            .teacher_id
+            .as_ref()
+            .and_then(|id_str| Uuid::parse_str(id_str).ok());
         let old_teacher_id = old_class.teacher_id;
-        
+
         // 更新classes表的teacher_id
         sqlx::query("UPDATE classes SET teacher_id = $1 WHERE id = $2")
             .bind(new_teacher_id)
             .bind(id)
             .execute(&mut *tx)
             .await?;
-            
+
         // 同步到teacher_class表并处理权限
         if let Some(new_teacher_id) = new_teacher_id {
             // 插入或更新teacher_class记录，设置is_main_teacher=true
@@ -429,7 +649,7 @@ async fn update_class(
             .bind(id)
             .execute(&mut *tx)
             .await?;
-            
+
             // 清除该班级其他老师的班主任标志
             sqlx::query(
                 "UPDATE teacher_class SET is_main_teacher = false 
@@ -439,19 +659,27 @@ async fn update_class(
             .bind(new_teacher_id)
             .execute(&mut *tx)
             .await?;
-            
+
             // 如果新班主任和旧班主任不同，处理权限变更
             if Some(new_teacher_id) != old_teacher_id {
                 let permission_manager = PermissionManager::new(pool.clone());
-                
+
                 // 为新班主任植入权限
-                permission_manager.add_class_permissions_for_teacher(new_teacher_id, id).await
-                    .map_err(|e| AppError::InternalWithMessage(format!("植入新班主任权限失败: {}", e)))?;
-                
+                permission_manager
+                    .add_class_permissions_for_teacher(new_teacher_id, id)
+                    .await
+                    .map_err(|e| {
+                        AppError::InternalWithMessage(format!("植入新班主任权限失败: {}", e))
+                    })?;
+
                 // 如果存在旧班主任，移除其权限
                 if let Some(old_teacher_id) = old_teacher_id {
-                    permission_manager.remove_class_permissions_for_teacher(old_teacher_id, id).await
-                        .map_err(|e| AppError::InternalWithMessage(format!("移除旧班主任权限失败: {}", e)))?;
+                    permission_manager
+                        .remove_class_permissions_for_teacher(old_teacher_id, id)
+                        .await
+                        .map_err(|e| {
+                            AppError::InternalWithMessage(format!("移除旧班主任权限失败: {}", e))
+                        })?;
                 }
             }
         } else {
@@ -463,12 +691,16 @@ async fn update_class(
             .bind(id)
             .execute(&mut *tx)
             .await?;
-            
+
             // 移除旧班主任的权限
             if let Some(old_teacher_id) = old_teacher_id {
                 let permission_manager = PermissionManager::new(pool.clone());
-                permission_manager.remove_class_permissions_for_teacher(old_teacher_id, id).await
-                    .map_err(|e| AppError::InternalWithMessage(format!("移除旧班主任权限失败: {}", e)))?;
+                permission_manager
+                    .remove_class_permissions_for_teacher(old_teacher_id, id)
+                    .await
+                    .map_err(|e| {
+                        AppError::InternalWithMessage(format!("移除旧班主任权限失败: {}", e))
+                    })?;
             }
         }
     }

@@ -1,6 +1,6 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 /// AI操作类型
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -13,31 +13,31 @@ pub enum AIActionType {
     UpdatePerson,
     DeletePerson,
     GetPersons,
-    
+
     // 考勤管理
     CreateAttendance,
     CreateAttendancesBatch,
     UpdateAttendance,
     DeleteAttendance,
     GetAttendances,
-    
+
     // 成绩/积分管理
     CreateScore,
     CreateScoresBatch,
     UpdateScore,
     DeleteScore,
     GetScores,
-    
+
     // 公告管理
     CreateNotice,
     UpdateNotice,
     DeleteNotice,
     GetNotices,
-    
+
     // 班级管理
     GetClasses,
     GetClassDetail,
-    
+
     // 小组管理
     GetGroups,
     GetGroupDetail,
@@ -45,7 +45,7 @@ pub enum AIActionType {
     UpdateGroupScore,
     AddGroupMember,
     RemoveGroupMember,
-    
+
     // 部门管理
     GetDepartments,
     GetDepartmentDetail,
@@ -61,68 +61,72 @@ impl AIActionType {
             AIActionType::UpdatePerson => "person.update",
             AIActionType::DeletePerson => "person.delete",
             AIActionType::GetPersons => "person.view",
-            
+
             // 考勤管理
-            AIActionType::CreateAttendance | AIActionType::CreateAttendancesBatch => "attendance.create",
+            AIActionType::CreateAttendance | AIActionType::CreateAttendancesBatch => {
+                "attendance.create"
+            }
             AIActionType::UpdateAttendance => "attendance.update",
             AIActionType::DeleteAttendance => "attendance.delete",
             AIActionType::GetAttendances => "attendance.view",
-            
+
             // 成绩/积分管理
             AIActionType::CreateScore | AIActionType::CreateScoresBatch => "score.create",
             AIActionType::UpdateScore => "score.update",
             AIActionType::DeleteScore => "score.delete",
             AIActionType::GetScores => "score.view",
-            
+
             // 公告管理
             AIActionType::CreateNotice => "notice.create",
             AIActionType::UpdateNotice => "notice.update",
             AIActionType::DeleteNotice => "notice.delete",
             AIActionType::GetNotices => "notice.view",
-            
+
             // 班级管理
             AIActionType::GetClasses | AIActionType::GetClassDetail => "class.view",
-            
+
             // 小组管理
             AIActionType::GetGroups | AIActionType::GetGroupDetail => "group.view",
             AIActionType::CreateGroup => "group.create",
             AIActionType::UpdateGroupScore => "group.update.score",
             AIActionType::AddGroupMember | AIActionType::RemoveGroupMember => "group.update.member",
-            
+
             // 部门管理
             AIActionType::GetDepartments | AIActionType::GetDepartmentDetail => "department.view",
         }
     }
-    
+
     /// 是否是批量操作
     pub fn is_batch(&self) -> bool {
-        matches!(self, 
-            AIActionType::CreatePersonsBatch |
-            AIActionType::CreateAttendancesBatch |
-            AIActionType::CreateScoresBatch
+        matches!(
+            self,
+            AIActionType::CreatePersonsBatch
+                | AIActionType::CreateAttendancesBatch
+                | AIActionType::CreateScoresBatch
         )
     }
-    
+
     /// 是否是查询操作
     pub fn is_query(&self) -> bool {
-        matches!(self,
-            AIActionType::GetPersons |
-            AIActionType::GetAttendances |
-            AIActionType::GetScores |
-            AIActionType::GetNotices |
-            AIActionType::GetClasses |
-            AIActionType::GetClassDetail |
-            AIActionType::GetGroups |
-            AIActionType::GetGroupDetail |
-            AIActionType::GetDepartments |
-            AIActionType::GetDepartmentDetail
+        matches!(
+            self,
+            AIActionType::GetPersons
+                | AIActionType::GetAttendances
+                | AIActionType::GetScores
+                | AIActionType::GetNotices
+                | AIActionType::GetClasses
+                | AIActionType::GetClassDetail
+                | AIActionType::GetGroups
+                | AIActionType::GetGroupDetail
+                | AIActionType::GetDepartments
+                | AIActionType::GetDepartmentDetail
         )
     }
 }
 
 impl std::str::FromStr for AIActionType {
     type Err = String;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "create_person" => Ok(AIActionType::CreatePerson),
@@ -130,37 +134,37 @@ impl std::str::FromStr for AIActionType {
             "update_person" => Ok(AIActionType::UpdatePerson),
             "delete_person" => Ok(AIActionType::DeletePerson),
             "get_persons" => Ok(AIActionType::GetPersons),
-            
+
             "create_attendance" => Ok(AIActionType::CreateAttendance),
             "create_attendances_batch" => Ok(AIActionType::CreateAttendancesBatch),
             "update_attendance" => Ok(AIActionType::UpdateAttendance),
             "delete_attendance" => Ok(AIActionType::DeleteAttendance),
             "get_attendances" => Ok(AIActionType::GetAttendances),
-            
+
             "create_score" => Ok(AIActionType::CreateScore),
             "create_scores_batch" => Ok(AIActionType::CreateScoresBatch),
             "update_score" => Ok(AIActionType::UpdateScore),
             "delete_score" => Ok(AIActionType::DeleteScore),
             "get_scores" => Ok(AIActionType::GetScores),
-            
+
             "create_notice" => Ok(AIActionType::CreateNotice),
             "update_notice" => Ok(AIActionType::UpdateNotice),
             "delete_notice" => Ok(AIActionType::DeleteNotice),
             "get_notices" => Ok(AIActionType::GetNotices),
-            
+
             "get_classes" => Ok(AIActionType::GetClasses),
             "get_class_detail" => Ok(AIActionType::GetClassDetail),
-            
+
             "get_groups" => Ok(AIActionType::GetGroups),
             "get_group_detail" => Ok(AIActionType::GetGroupDetail),
             "create_group" => Ok(AIActionType::CreateGroup),
             "update_group_score" => Ok(AIActionType::UpdateGroupScore),
             "add_group_member" => Ok(AIActionType::AddGroupMember),
             "remove_group_member" => Ok(AIActionType::RemoveGroupMember),
-            
+
             "get_departments" => Ok(AIActionType::GetDepartments),
             "get_department_detail" => Ok(AIActionType::GetDepartmentDetail),
-            
+
             _ => Err(format!("未知的操作类型: {}", s)),
         }
     }

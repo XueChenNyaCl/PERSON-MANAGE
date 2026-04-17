@@ -3,10 +3,11 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::api::routes::AppState;
-use crate::core::auth::generate_token;
+use crate::core::auth::{generate_admin_token, generate_token};
 use crate::core::config::load_config;
-use crate::core::password::{verify_password, hash_password};
+use crate::core::password::{hash_password, verify_password};
 use crate::core::permission;
+use crate::core::permission::PermissionManager;
 
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
@@ -22,7 +23,7 @@ pub struct RegisterRequest {
     pub password: String,
     pub name: String,
     pub email: Option<String>,
-    pub role: String, // admin, teacher, student, parent
+    pub role: String,  // admin, teacher, student, parent
     pub type_: String, // student, teacher, parent
 }
 
@@ -61,16 +62,53 @@ pub async fn login(
     Json(login_req): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, (StatusCode, String)> {
     println!("=== LOGIN DEBUG ===");
-    println!("登录请求: username={}, remember_me={}", login_req.username, login_req.remember_me);
-    
+    println!(
+        "登录请求: username={}, remember_me={}",
+        login_req.username, login_req.remember_me
+    );
+
     // 1. 查询用户
     let pool = match &state.pool {
         Some(pool) => pool,
         None => {
             println!("错误: 数据库连接未初始化");
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, "数据库连接未初始化".to_string()));
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "数据库连接未初始化".to_string(),
+            ));
         }
     };
+
+    // 检查是否是预留的 admin 账号 (00000000-0000-0000-0000-000000000000)
+    // 如果是，拒绝直接登录，要求使用有 admin 权限的普通账号
+    let is_reserved_admin = login_req.username == "admin";
+    if is_reserved_admin {
+        println!("检测到预留 admin 账号登录尝试，检查是否允许...");
+        
+        // 查询预留 admin 账号状态
+        let reserved_admin = sqlx::query_as!(
+            LoginUser,
+            "SELECT id as \"id!: _\", username as \"username!: _\", password_hash as \"password_hash!: _\", role as \"role!: _\", name as \"name!: _\", email as \"email?\", is_active as \"is_active?\" FROM persons WHERE id = '00000000-0000-0000-0000-000000000000'"
+        )
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| {
+            println!("查询预留admin错误: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+
+        // 如果预留 admin 存在且激活，暂时允许登录（兼容旧版本）
+        // 后续可以完全禁止
+        if let Some(admin) = reserved_admin {
+            if admin.is_active == Some(true) {
+                println!("预留 admin 账号存在且激活，允许登录（兼容模式）");
+                // 继续正常登录流程
+            } else {
+                println!("预留 admin 账号已禁用，拒绝登录");
+                return Err((StatusCode::UNAUTHORIZED, "该账号已禁用，请联系管理员".to_string()));
+            }
+        }
+    }
 
     let user = sqlx::query_as!(
         LoginUser,
@@ -83,11 +121,14 @@ pub async fn login(
         println!("数据库查询错误: {}", e);
         (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
     })?;
-    
+
     // 2. 验证用户存在
     let user = match user {
         Some(u) => {
-            println!("找到用户: id={}, role={}, is_active={:?}", u.id, u.role, u.is_active);
+            println!(
+                "找到用户: id={}, role={}, is_active={:?}",
+                u.id, u.role, u.is_active
+            );
             u
         }
         None => {
@@ -95,58 +136,82 @@ pub async fn login(
             return Err((StatusCode::UNAUTHORIZED, "用户名或密码错误".to_string()));
         }
     };
-    
+
     // 2.1 验证用户是否激活
     if user.is_active != Some(true) {
         return Err((StatusCode::UNAUTHORIZED, "用户账户已禁用".to_string()));
     }
-    
+
     // 3. 验证密码
-    println!("验证密码: username={}, password_length={}", login_req.username, login_req.password.len());
-    // 临时：允许admin用户使用密码"admin"登录
-    let password_valid = if login_req.username == "admin" && login_req.password == "admin" {
-        println!("使用临时密码绕过admin登录");
-        true
-    } else {
-        match verify_password(&login_req.password, &user.password_hash) {
-            Ok(valid) => {
-                println!("密码验证结果: {}", valid);
-                valid
-            }
-            Err(e) => {
-                println!("密码验证错误: {}", e);
-                return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
-            }
+    println!(
+        "验证密码: username={}, password_length={}",
+        login_req.username,
+        login_req.password.len()
+    );
+    
+    let password_valid = match verify_password(&login_req.password, &user.password_hash) {
+        Ok(valid) => {
+            println!("密码验证结果: {}", valid);
+            valid
+        }
+        Err(e) => {
+            println!("密码验证错误: {}", e);
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
         }
     };
-    
+
     if !password_valid {
         println!("错误: 密码不正确");
         return Err((StatusCode::UNAUTHORIZED, "用户名或密码错误".to_string()));
     }
-    
+
     println!("密码验证通过");
-    
+
     // 4. 加载配置
     let config = load_config().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // 5. 检查用户是否有 admin 权限
+    let permission_manager = PermissionManager::new(pool.clone());
+    let has_admin_permission = permission_manager
+        .check_permission(user.id, "system.settings")
+        .await;
     
-    // 5. 生成令牌（根据remember_me设置不同过期时间）
+    let is_admin = matches!(has_admin_permission, permission::PermissionResult::Allowed);
+    println!("用户 {} admin权限检查结果: {:?}, is_admin={}", user.username, has_admin_permission, is_admin);
+
+    // 6. 生成令牌（根据用户类型和remember_me设置不同过期时间）
     let expires_in_hours = if login_req.remember_me { 24 * 7 } else { 24 }; // 7天或1天
-    let token = generate_token(
-        &user.id.to_string(),
-        &user.username,
-        &user.role,
-        &config.jwt_secret,
-        expires_in_hours,
-    )
+    
+    // 如果用户有 admin 权限，使用 admin token 格式
+    let token = if is_admin {
+        println!("生成 admin token for user: {}", user.username);
+        generate_admin_token(
+            &user.id.to_string(),
+            &user.username,
+            &user.role,
+            &config.jwt_secret,
+            expires_in_hours,
+        )
+    } else {
+        generate_token(
+            &user.id.to_string(),
+            &user.username,
+            &user.role,
+            &config.jwt_secret,
+            expires_in_hours,
+        )
+    }
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    
+
     // 6. 更新最后登录时间
-    sqlx::query!("UPDATE persons SET last_login_at = NOW() WHERE id = $1", user.id)
-        .execute(pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    
+    sqlx::query!(
+        "UPDATE persons SET last_login_at = NOW() WHERE id = $1",
+        user.id
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
     // 7. 获取用户权限
     let user_permissions = match permission::get_user_permissions(pool, user.id).await {
         Ok(perms) => perms,
@@ -155,11 +220,11 @@ pub async fn login(
             Vec::new()
         }
     };
-    
+
     // 7.5 检查并修复班主任权限（如果用户是老师）
     if user.role == "teacher" {
         println!("用户是老师，检查班主任权限...");
-        
+
         // 查询用户是否是班主任（通过classes表的teacher_id字段）
         let teacher_classes: Vec<(Uuid, String)> = sqlx::query!(
             "SELECT id, name FROM classes WHERE teacher_id = $1",
@@ -167,16 +232,12 @@ pub async fn login(
         )
         .fetch_all(pool)
         .await
-        .map(|rows| {
-            rows.into_iter()
-                .map(|row| (row.id, row.name))
-                .collect()
-        })
+        .map(|rows| rows.into_iter().map(|row| (row.id, row.name)).collect())
         .unwrap_or_else(|e| {
             println!("查询班主任班级失败: {}", e);
             Vec::new()
         });
-        
+
         // 同时查询teacher_class表中标记为班主任的班级
         let teacher_class_classes: Vec<(Uuid, String)> = sqlx::query!(
             "SELECT c.id, c.name 
@@ -187,45 +248,47 @@ pub async fn login(
         )
         .fetch_all(pool)
         .await
-        .map(|rows| {
-            rows.into_iter()
-                .map(|row| (row.id, row.name))
-                .collect()
-        })
+        .map(|rows| rows.into_iter().map(|row| (row.id, row.name)).collect())
         .unwrap_or_else(|e| {
             println!("查询teacher_class班主任班级失败: {}", e);
             Vec::new()
         });
-        
+
         // 合并两个来源的班级，去重
         use std::collections::HashSet;
         let mut all_classes = HashSet::new();
         for (class_id, class_name) in teacher_classes.into_iter().chain(teacher_class_classes) {
             all_classes.insert((class_id, class_name));
         }
-        
+
         println!("老师是 {} 个班级的班主任", all_classes.len());
-        
+
         // 为每个班主任班级检查并添加权限
         let permission_manager = permission::PermissionManager::new(pool.clone());
         for (class_id, class_name) in all_classes {
             println!("检查班级 {} ({}) 的权限...", class_name, class_id);
-            
+
             // 检查是否已有班级特定权限（检查任意一个group权限即可）
             let has_perm = sqlx::query_scalar!(
                 "SELECT COUNT(*) FROM user_permissions 
                  WHERE user_id = $1 AND permission LIKE $2",
                 user.id,
-                format!("group.%.{}", permission::PermissionManager::get_class_suffix(class_id))
+                format!(
+                    "group.%.{}",
+                    permission::PermissionManager::get_class_suffix(class_id)
+                )
             )
             .fetch_one(pool)
             .await
             .map(|opt: Option<i64>| opt.unwrap_or(0) > 0)
             .unwrap_or(false);
-            
+
             if !has_perm {
                 println!("班级 {} 缺少权限，正在添加...", class_name);
-                match permission_manager.add_class_permissions_for_teacher(user.id, class_id).await {
+                match permission_manager
+                    .add_class_permissions_for_teacher(user.id, class_id)
+                    .await
+                {
                     Ok(_) => println!("成功为班级 {} 添加权限", class_name),
                     Err(e) => println!("为班级 {} 添加权限失败: {}", class_name, e),
                 }
@@ -234,7 +297,7 @@ pub async fn login(
             }
         }
     }
-    
+
     // 8. 获取用户班级特定权限
     let class_permissions = {
         let manager = permission::PermissionManager::new(pool.clone());
@@ -246,7 +309,7 @@ pub async fn login(
             }
         }
     };
-    
+
     // 9. 构建响应
     let response = LoginResponse {
         token,
@@ -261,7 +324,7 @@ pub async fn login(
         class_permissions,
         expires_in: expires_in_hours * 3600,
     };
-    
+
     Ok(Json(response))
 }
 
@@ -271,7 +334,7 @@ pub fn get_user_permissions(role: &str) -> Vec<String> {
     // 尝试从YAML模板文件加载权限
     let template_rel_path = format!("templates/permissions/{}.yaml", role);
     let template_path = crate::core::app_paths::resolve_runtime_path(template_rel_path);
-    
+
     match std::fs::read_to_string(&template_path) {
         Ok(content) => {
             // 简单的YAML解析，提取权限名称
@@ -306,36 +369,46 @@ pub async fn register(
     Json(register_req): Json<RegisterRequest>,
 ) -> Result<Json<UserInfo>, (StatusCode, String)> {
     // 1. 验证输入
-    if register_req.username.is_empty() || register_req.password.is_empty() || register_req.name.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "用户名、密码和姓名不能为空".to_string()));
+    if register_req.username.is_empty()
+        || register_req.password.is_empty()
+        || register_req.name.is_empty()
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "用户名、密码和姓名不能为空".to_string(),
+        ));
     }
-    
+
     // 2. 检查用户名是否已存在
     let pool = match &state.pool {
         Some(pool) => pool,
-        None => return Err((StatusCode::INTERNAL_SERVER_ERROR, "数据库连接未初始化".to_string())),
+        None => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "数据库连接未初始化".to_string(),
+            ))
+        }
     };
-    
-    let existing_user = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM persons WHERE username = $1",
-    )
-    .bind(&register_req.username)
-    .fetch_one(pool)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    
+
+    let existing_user =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM persons WHERE username = $1")
+            .bind(&register_req.username)
+            .fetch_one(pool)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
     if existing_user > 0 {
         return Err((StatusCode::BAD_REQUEST, "用户名已存在".to_string()));
     }
-    
+
     // 3. 哈希密码
     let password_hash = hash_password(&register_req.password)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    
+
     // 4. 创建用户
     let user_id = uuid::Uuid::new_v4();
     let now = chrono::Utc::now();
-    
+
     sqlx::query!(
         r#"
         INSERT INTO persons (id, username, password_hash, role, name, email, type, is_active, created_at, updated_at)
@@ -353,17 +426,21 @@ pub async fn register(
     .execute(pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    
+
     // 5. 根据用户类型，可能需要插入到相关表（students/teachers/parents）
     // 注意：这里只创建基础persons记录，扩展表需要额外处理
     // 未来扩展：根据type_字段插入到相应的扩展表
-    
+
     // 6. 为新用户应用权限模板
-    if let Err(e) = permission::apply_role_template_to_user(pool, user_id, &register_req.role).await {
-        println!("警告: 为用户 {} 应用权限模板失败: {}", register_req.username, e);
+    if let Err(e) = permission::apply_role_template_to_user(pool, user_id, &register_req.role).await
+    {
+        println!(
+            "警告: 为用户 {} 应用权限模板失败: {}",
+            register_req.username, e
+        );
         // 不返回错误，继续创建用户，但记录日志
     }
-    
+
     // 7. 返回用户信息
     let user_info = UserInfo {
         id: user_id.to_string(),
@@ -372,6 +449,6 @@ pub async fn register(
         name: register_req.name,
         email: register_req.email.unwrap_or_default(),
     };
-    
+
     Ok(Json(user_info))
 }

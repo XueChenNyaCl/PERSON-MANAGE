@@ -8,17 +8,17 @@ use uuid::Uuid;
 
 use crate::api::routes::AppState;
 use crate::core::auth::Claims;
+use crate::core::chat_schema::ensure_chat_schema;
 use crate::core::chat_scope::{ensure_conversation_member, get_chat_targets};
 use crate::core::error::AppError;
-use crate::models::chat::{
-    ChatConversationResponse, ChatMessageResponse, ChatSendMessageRequest,
-};
+use crate::models::chat::{ChatConversationResponse, ChatMessageResponse, ChatSendMessageRequest};
 
 pub async fn list_conversations(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
 ) -> Result<Json<Vec<ChatConversationResponse>>, AppError> {
     let pool = state.pool.ok_or(AppError::Internal)?;
+    ensure_chat_schema(&pool).await?;
     let user_id = parse_user_id(&claims)?;
 
     ensure_default_conversations(&pool, user_id, &claims.role).await?;
@@ -33,10 +33,13 @@ pub async fn list_messages(
     Path(conversation_id): Path<Uuid>,
 ) -> Result<Json<Vec<ChatMessageResponse>>, AppError> {
     let pool = state.pool.ok_or(AppError::Internal)?;
+    ensure_chat_schema(&pool).await?;
     let user_id = parse_user_id(&claims)?;
 
     ensure_conversation_member(&pool, conversation_id, user_id).await?;
-    Ok(Json(load_conversation_messages(&pool, conversation_id, user_id).await?))
+    Ok(Json(
+        load_conversation_messages(&pool, conversation_id, user_id).await?,
+    ))
 }
 
 pub async fn send_message(
@@ -46,6 +49,7 @@ pub async fn send_message(
     Json(payload): Json<ChatSendMessageRequest>,
 ) -> Result<Json<ChatMessageResponse>, AppError> {
     let pool = state.pool.ok_or(AppError::Internal)?;
+    ensure_chat_schema(&pool).await?;
     let user_id = parse_user_id(&claims)?;
 
     ensure_conversation_member(&pool, conversation_id, user_id).await?;
@@ -60,7 +64,7 @@ pub async fn send_message(
     let message_id: Uuid = sqlx::query_scalar(
         "INSERT INTO chat_messages (conversation_id, sender_id, content, message_type)
          VALUES ($1, $2, $3, $4)
-         RETURNING id"
+         RETURNING id",
     )
     .bind(conversation_id)
     .bind(user_id)
@@ -83,6 +87,7 @@ pub async fn mark_read(
     Path(conversation_id): Path<Uuid>,
 ) -> Result<Json<ReadReceiptResponse>, AppError> {
     let pool = state.pool.ok_or(AppError::Internal)?;
+    ensure_chat_schema(&pool).await?;
     let user_id = parse_user_id(&claims)?;
 
     ensure_conversation_member(&pool, conversation_id, user_id).await?;
@@ -156,19 +161,18 @@ async fn get_or_create_direct_conversation(
 ) -> Result<Uuid, AppError> {
     let pair_key = build_pair_key(user_a, user_b);
 
-    let conversation_id: Uuid = if let Some(id) = sqlx::query_scalar(
-        "SELECT id FROM chat_conversations WHERE pair_key = $1"
-    )
-    .bind(&pair_key)
-    .fetch_optional(pool)
-    .await?
+    let conversation_id: Uuid = if let Some(id) =
+        sqlx::query_scalar("SELECT id FROM chat_conversations WHERE pair_key = $1")
+            .bind(&pair_key)
+            .fetch_optional(pool)
+            .await?
     {
         id
     } else {
         sqlx::query_scalar(
             "INSERT INTO chat_conversations (conversation_type, pair_key)
              VALUES ('direct', $1)
-             RETURNING id"
+             RETURNING id",
         )
         .bind(&pair_key)
         .fetch_one(pool)
@@ -178,7 +182,7 @@ async fn get_or_create_direct_conversation(
     sqlx::query(
         "INSERT INTO chat_conversation_members (conversation_id, user_id)
          VALUES ($1, $2)
-         ON CONFLICT (conversation_id, user_id) DO NOTHING"
+         ON CONFLICT (conversation_id, user_id) DO NOTHING",
     )
     .bind(conversation_id)
     .bind(user_a)
@@ -188,7 +192,7 @@ async fn get_or_create_direct_conversation(
     sqlx::query(
         "INSERT INTO chat_conversation_members (conversation_id, user_id)
          VALUES ($1, $2)
-         ON CONFLICT (conversation_id, user_id) DO NOTHING"
+         ON CONFLICT (conversation_id, user_id) DO NOTHING",
     )
     .bind(conversation_id)
     .bind(user_b)
@@ -241,7 +245,7 @@ async fn load_user_conversations(
                )
          ) unread ON TRUE
          WHERE self_member.user_id = $1
-         ORDER BY COALESCE(last_msg.created_at, c.updated_at) DESC"
+         ORDER BY COALESCE(last_msg.created_at, c.updated_at) DESC",
     )
     .bind(user_id)
     .fetch_all(pool)
@@ -279,7 +283,7 @@ async fn load_conversation_messages(
          FROM chat_messages m
          JOIN persons p ON p.id = m.sender_id
          WHERE m.conversation_id = $1
-         ORDER BY m.created_at ASC"
+         ORDER BY m.created_at ASC",
     )
     .bind(conversation_id)
     .fetch_all(pool)
@@ -315,7 +319,7 @@ async fn load_message_by_id(
                 m.created_at
          FROM chat_messages m
          JOIN persons p ON p.id = m.sender_id
-         WHERE m.id = $1"
+         WHERE m.id = $1",
     )
     .bind(message_id)
     .fetch_optional(pool)

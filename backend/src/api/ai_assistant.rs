@@ -34,10 +34,7 @@ pub async fn get_assistant_suggestion(
 
     // 前端当前传参结构为：{ page, path, data, timestamp }
     // 这里优先使用 data 作为真实页面上下文，同时兼容旧结构（直接传 stats/summary）
-    let context = req
-        .page_context
-        .get("data")
-        .unwrap_or(&req.page_context);
+    let context = req.page_context.get("data").unwrap_or(&req.page_context);
 
     let suggestion = build_suggestion(page, context);
 

@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -117,6 +117,8 @@ pub enum PersonResponse {
     Teacher(TeacherResponse),
     #[serde(rename = "parent")]
     Parent(ParentResponse),
+    #[serde(rename = "temporary")]
+    Temporary { message: String },
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -186,7 +188,7 @@ impl From<(Person, Option<Student>)> for PersonResponse {
                     class_id: student.class_id,
                     class_name: None, // 需要额外查询
                     enrollment_date: student.enrollment_date,
-                    status: student.status
+                    status: student.status,
                 })
             }
             "teacher" => {
@@ -203,21 +205,19 @@ impl From<(Person, Option<Student>)> for PersonResponse {
                     department_name: None,
                     classes: Vec::new(),
                     title: None,
-                    hire_date: None
+                    hire_date: None,
                 })
             }
-            "parent" => {
-                PersonResponse::Parent(ParentResponse {
-                    id: person.id,
-                    name: person.name,
-                    gender: person.gender,
-                    birthday: person.birthday,
-                    phone: person.phone,
-                    email: person.email,
-                    wechat_openid: None,
-                    occupation: None
-                })
-            }
+            "parent" => PersonResponse::Parent(ParentResponse {
+                id: person.id,
+                name: person.name,
+                gender: person.gender,
+                birthday: person.birthday,
+                phone: person.phone,
+                email: person.email,
+                wechat_openid: None,
+                occupation: None,
+            }),
             _ => {
                 // 默认作为基础人员
                 PersonResponse::Teacher(TeacherResponse {
@@ -232,7 +232,7 @@ impl From<(Person, Option<Student>)> for PersonResponse {
                     department_name: None,
                     classes: Vec::new(),
                     title: None,
-                    hire_date: None
+                    hire_date: None,
                 })
             }
         }

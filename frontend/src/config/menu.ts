@@ -130,6 +130,14 @@ export const menuItems: MenuItem[] = [
     path: '/dashboard/system/plugin',
     requiredPermission: 'system.settings',
     parentId: 'system-settings'
+  },
+  {
+    id: 'system-monitor',
+    title: '系统监控',
+    icon: 'Monitor',
+    path: '/dashboard/system/monitor',
+    requiredPermission: 'system.settings',
+    parentId: 'system-settings'
   }
 ]
 

@@ -10,6 +10,7 @@ use crate::api::routes::AppState;
 use crate::core::auth::Claims;
 use crate::core::error::AppError;
 use crate::core::permission::PermissionManager;
+use crate::core::redis::cache::CacheKey;
 use crate::models::department::{
     Department, DepartmentCreate, DepartmentResponse, DepartmentUpdate,
 };
@@ -36,22 +37,55 @@ pub async fn list(
     let page = query.page.unwrap_or(1);
     let limit = query.limit.unwrap_or(20);
 
-    if let Some(pool) = state.pool {
-        let (items, total) = list_departments(&pool, query.search.as_deref(), page, limit).await?;
-        Ok(Json(ListResponse {
-            items,
-            total,
-            page,
-            limit,
-        }))
-    } else {
-        Ok(Json(ListResponse {
-            items: Vec::new(),
-            total: 0,
-            page,
-            limit,
-        }))
+    let pool = state.pool.ok_or_else(|| AppError::Internal)?;
+
+    // 优先使用 DatabaseService（带缓存）
+    if let Some(db_service) = &state.db_service {
+        let cache_key =
+            CacheKey::departments_list(Some(&format!("{}:{}:{:?}", page, limit, query.search)));
+
+        // 尝试从缓存获取
+        match db_service
+            .query_cached::<Vec<DepartmentResponse>>(&cache_key)
+            .await
+        {
+            Ok(Some(cached)) => {
+                tracing::trace!("Cache hit for departments list: {}", cache_key);
+                let total = cached.len() as i64;
+                return Ok(Json(ListResponse {
+                    items: cached,
+                    total,
+                    page,
+                    limit,
+                }));
+            }
+            Ok(None) => {
+                tracing::trace!("Cache miss for departments list: {}", cache_key);
+            }
+            Err(e) => {
+                tracing::warn!("Cache read error: {}, falling back to database", e);
+            }
+        }
     }
+
+    // 回退到直接数据库查询
+    let (items, total) = list_departments(&pool, query.search.as_deref(), page, limit).await?;
+
+    // 写入缓存
+    if let Some(db_service) = &state.db_service {
+        let cache_key =
+            CacheKey::departments_list(Some(&format!("{}:{}:{:?}", page, limit, query.search)));
+        if let Err(e) = db_service.cache_set(&cache_key, &items, None).await {
+            tracing::warn!("Failed to cache departments list: {}", e);
+        }
+    }
+
+    Ok(Json(ListResponse {
+        items,
+        total,
+        page,
+        limit,
+    }))
 }
 
 pub async fn create(
@@ -60,7 +94,57 @@ pub async fn create(
 ) -> Result<Json<DepartmentResponse>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
 
+    // 尝试使用写入缓冲（如果可用）
+    if let Some(db_service) = &state.db_service {
+        if let Some(buffer) = db_service.get_write_buffer() {
+            let department_data = serde_json::to_value(&payload)
+                .map_err(|e| AppError::InternalWithMessage(format!("序列化失败: {}", e)))?;
+
+            match buffer.buffer_insert("departments", department_data).await {
+                Ok(_) => {
+                    tracing::info!("Department creation buffered successfully");
+                    // 使部门列表缓存失效
+                    if let Err(e) = db_service
+                        .invalidate_entity_cache("departments", None)
+                        .await
+                    {
+                        tracing::warn!(
+                            "Failed to invalidate departments cache after buffer: {}",
+                            e
+                        );
+                    }
+                    // 返回临时响应
+                    return Ok(Json(DepartmentResponse {
+                        id: Uuid::new_v4(),
+                        name: payload.name.clone(),
+                        parent_id: payload.parent_id.and_then(|s| Uuid::parse_str(&s).ok()),
+                        parent_name: None,
+                        created_at: chrono::Utc::now(),
+                    }));
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to buffer department creation, falling back to immediate: {}",
+                        e
+                    );
+                }
+            }
+        }
+    }
+
+    // 直接写入数据库（回退方案）
     let department = create_department(&pool, payload).await?;
+
+    // 使部门列表缓存失效
+    if let Some(db_service) = &state.db_service {
+        if let Err(e) = db_service
+            .invalidate_entity_cache("departments", None)
+            .await
+        {
+            tracing::warn!("Failed to invalidate departments cache after create: {}", e);
+        }
+    }
+
     Ok(Json(department))
 }
 
@@ -70,7 +154,39 @@ pub async fn get(
 ) -> Result<Json<DepartmentResponse>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::NotFound)?;
 
+    // 优先使用 DatabaseService（带缓存）
+    if let Some(db_service) = &state.db_service {
+        let cache_key = CacheKey::department(&id.to_string());
+
+        // 尝试从缓存获取
+        match db_service
+            .query_cached::<DepartmentResponse>(&cache_key)
+            .await
+        {
+            Ok(Some(cached)) => {
+                tracing::trace!("Cache hit for department: {}", cache_key);
+                return Ok(Json(cached));
+            }
+            Ok(None) => {
+                tracing::trace!("Cache miss for department: {}", cache_key);
+            }
+            Err(e) => {
+                tracing::warn!("Cache read error: {}, falling back to database", e);
+            }
+        }
+    }
+
+    // 回退到直接数据库查询
     let department = get_department(&pool, id).await?;
+
+    // 写入缓存
+    if let Some(db_service) = &state.db_service {
+        let cache_key = CacheKey::department(&id.to_string());
+        if let Err(e) = db_service.cache_set(&cache_key, &department, None).await {
+            tracing::warn!("Failed to cache department: {}", e);
+        }
+    }
+
     Ok(Json(department))
 }
 
@@ -81,13 +197,61 @@ pub async fn update(
     Json(payload): Json<DepartmentUpdate>,
 ) -> Result<Json<DepartmentResponse>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
-    
+
     // 检查权限：任何部门更新都需要department.update权限
-    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let user_id =
+        Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
     let manager = PermissionManager::new(pool.clone());
-    manager.require_permission(user_id, "department.update").await?;
-    
+    manager
+        .require_permission(user_id, "department.update")
+        .await?;
+
+    // 尝试使用写入缓冲（如果可用）
+    if let Some(db_service) = &state.db_service {
+        if let Some(buffer) = db_service.get_write_buffer() {
+            let update_data = serde_json::to_value(&payload)
+                .map_err(|e| AppError::InternalWithMessage(format!("序列化失败: {}", e)))?;
+
+            match buffer
+                .buffer_update("departments", &id.to_string(), update_data)
+                .await
+            {
+                Ok(_) => {
+                    tracing::info!("Department update buffered successfully: {}", id);
+                    // 使缓存失效
+                    if let Err(e) = db_service
+                        .invalidate_entity_cache("departments", Some(&id.to_string()))
+                        .await
+                    {
+                        tracing::warn!("Failed to invalidate department cache after buffer: {}", e);
+                    }
+                    // 返回更新后的部门信息
+                    let department = get_department(&pool, id).await?;
+                    return Ok(Json(department));
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to buffer department update, falling back to immediate: {}",
+                        e
+                    );
+                }
+            }
+        }
+    }
+
+    // 直接更新数据库（回退方案）
     let department = update_department(&pool, id, payload).await?;
+
+    // 使缓存失效
+    if let Some(db_service) = &state.db_service {
+        if let Err(e) = db_service
+            .invalidate_entity_cache("departments", Some(&id.to_string()))
+            .await
+        {
+            tracing::warn!("Failed to invalidate department cache after update: {}", e);
+        }
+    }
+
     Ok(Json(department))
 }
 
@@ -97,13 +261,53 @@ pub async fn delete(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
-    
-    // 检查删除部门权限
-    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
-    let manager = PermissionManager::new(pool.clone());
-    manager.require_permission(user_id, "department.delete").await?;
 
+    // 检查删除部门权限
+    let user_id =
+        Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let manager = PermissionManager::new(pool.clone());
+    manager
+        .require_permission(user_id, "department.delete")
+        .await?;
+
+    // 尝试使用写入缓冲（如果可用）
+    if let Some(db_service) = &state.db_service {
+        if let Some(buffer) = db_service.get_write_buffer() {
+            match buffer.buffer_delete("departments", &id.to_string()).await {
+                Ok(_) => {
+                    tracing::info!("Department deletion buffered successfully: {}", id);
+                    // 使缓存失效
+                    if let Err(e) = db_service
+                        .invalidate_entity_cache("departments", Some(&id.to_string()))
+                        .await
+                    {
+                        tracing::warn!("Failed to invalidate department cache after buffer: {}", e);
+                    }
+                    return Ok(StatusCode::NO_CONTENT);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to buffer department deletion, falling back to immediate: {}",
+                        e
+                    );
+                }
+            }
+        }
+    }
+
+    // 直接删除数据库（回退方案）
     delete_department(&pool, id).await?;
+
+    // 使缓存失效
+    if let Some(db_service) = &state.db_service {
+        if let Err(e) = db_service
+            .invalidate_entity_cache("departments", Some(&id.to_string()))
+            .await
+        {
+            tracing::warn!("Failed to invalidate department cache after delete: {}", e);
+        }
+    }
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -184,7 +388,9 @@ async fn create_department(
     let id = Uuid::new_v4();
 
     // Convert string parent_id to Uuid if provided
-    let parent_id = payload.parent_id.and_then(|id_str| Uuid::parse_str(&id_str).ok());
+    let parent_id = payload
+        .parent_id
+        .and_then(|id_str| Uuid::parse_str(&id_str).ok());
 
     sqlx::query(
         "INSERT INTO departments (id, name, parent_id)
@@ -219,7 +425,10 @@ async fn update_department(
     }
     if payload.parent_id.is_some() {
         // Convert string parent_id to Uuid if provided
-        let parent_id = payload.parent_id.as_ref().and_then(|id_str| Uuid::parse_str(id_str).ok());
+        let parent_id = payload
+            .parent_id
+            .as_ref()
+            .and_then(|id_str| Uuid::parse_str(id_str).ok());
         sqlx::query("UPDATE departments SET parent_id = $1 WHERE id = $2")
             .bind(parent_id)
             .bind(id)

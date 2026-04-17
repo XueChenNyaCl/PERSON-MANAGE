@@ -1,0 +1,29 @@
+#########################################################
+win
+>ps
+netsh interface portproxy add v4tov4 listenport=6379 listenaddress=0.0.0.0 connectport=6379 connectaddress=<WSL2的IP地址>
+New-NetFirewallRule -DisplayName "Allow Redis Port 6379" -Direction Inbound -LocalPort 6379 -Protocol TCP -Action Allow
+
+>redis
+host:127.0.0.1:6379
+rassword:@redis
+
+
+######################################################
+wsl-ubuntu-redis
+>bash
+sudo nano /etc/redis/redis.conf
+bind 127.0.0.1 ::1 -> bind 0.0.0.0
+protected-mode yes -> protected-mode no
+maxmemory 2gb
+maxmemory-policy allkeys-lru
+requirepass @redis
+^o
+
+sudo service redis-server restart
+
+redis-cli
+exit
+
+ip addr show eth0 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1
+-> WSL_ip

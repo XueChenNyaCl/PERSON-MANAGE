@@ -6,36 +6,38 @@ use std::env;
 async fn main() -> Result<(), anyhow::Error> {
     dotenv::dotenv().ok();
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    
+
     println!("初始化用户登录凭据...");
     println!("数据库连接: {}", database_url);
-    
+
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&database_url)
         .await?;
-    
+
     // 检查persons表是否有登录字段
     println!("检查persons表结构...");
     let has_username_column = sqlx::query_scalar::<_, bool>(
         "SELECT EXISTS (
             SELECT 1 FROM information_schema.columns 
             WHERE table_name = 'persons' AND column_name = 'username'
-        )"
+        )",
     )
     .fetch_one(&pool)
     .await?;
-    
+
     if !has_username_column {
-        println!("❌ persons表缺少username字段，请先运行迁移文件003_add_login_fields_to_persons.sql");
+        println!(
+            "❌ persons表缺少username字段，请先运行迁移文件003_add_login_fields_to_persons.sql"
+        );
         return Ok(());
     }
-    
+
     // 生成默认密码哈希
     let default_password = "123456";
     let password_hash = hash(default_password, DEFAULT_COST)?;
     println!("默认密码哈希生成完成: {}", default_password);
-    
+
     // 处理学生
     println!("处理学生账号...");
     let students = sqlx::query!(
@@ -48,12 +50,12 @@ async fn main() -> Result<(), anyhow::Error> {
     )
     .fetch_all(&pool)
     .await?;
-    
+
     println!("找到 {} 个需要初始化的学生", students.len());
-    
+
     for student in students {
         println!("  学生: {} (学号: {})", student.name, student.student_no);
-        
+
         match sqlx::query!(
             r#"
             UPDATE persons 
@@ -79,7 +81,7 @@ async fn main() -> Result<(), anyhow::Error> {
             }
         }
     }
-    
+
     // 处理教师
     println!("处理教师账号...");
     let teachers = sqlx::query!(
@@ -92,12 +94,12 @@ async fn main() -> Result<(), anyhow::Error> {
     )
     .fetch_all(&pool)
     .await?;
-    
+
     println!("找到 {} 个需要初始化的教师", teachers.len());
-    
+
     for teacher in teachers {
         println!("  教师: {} (工号: {})", teacher.name, teacher.employee_no);
-        
+
         match sqlx::query!(
             r#"
             UPDATE persons 
@@ -123,7 +125,7 @@ async fn main() -> Result<(), anyhow::Error> {
             }
         }
     }
-    
+
     // 处理家长（如果没有特殊标识，使用person_id作为用户名）
     println!("处理家长账号...");
     let parents = sqlx::query!(
@@ -142,14 +144,14 @@ async fn main() -> Result<(), anyhow::Error> {
     )
     .fetch_all(&pool)
     .await?;
-    
+
     println!("找到 {} 个需要初始化的家长", parents.len());
-    
+
     for parent in parents {
         // 生成用户名：parent_<id前8位>
         let username = format!("parent_{}", &parent.id.to_string()[..8]);
         println!("  家长: {} (用户名: {})", parent.name, username);
-        
+
         match sqlx::query!(
             r#"
             UPDATE persons 
@@ -175,39 +177,49 @@ async fn main() -> Result<(), anyhow::Error> {
             }
         }
     }
-    
+
     // 统计结果
     println!("\n初始化完成！统计结果：");
-    
-    let total_users = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM persons WHERE username IS NOT NULL AND password_hash IS NOT NULL")
-        .fetch_one(&pool)
-        .await?;
+
+    let total_users = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM persons WHERE username IS NOT NULL AND password_hash IS NOT NULL",
+    )
+    .fetch_one(&pool)
+    .await?;
     println!("  已设置登录凭据的用户总数: {}", total_users);
-    
-    let students_with_creds = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM persons WHERE role = 'student' AND username IS NOT NULL")
-        .fetch_one(&pool)
-        .await?;
+
+    let students_with_creds = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM persons WHERE role = 'student' AND username IS NOT NULL",
+    )
+    .fetch_one(&pool)
+    .await?;
     println!("  学生账号: {}", students_with_creds);
-    
-    let teachers_with_creds = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM persons WHERE role = 'teacher' AND username IS NOT NULL")
-        .fetch_one(&pool)
-        .await?;
+
+    let teachers_with_creds = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM persons WHERE role = 'teacher' AND username IS NOT NULL",
+    )
+    .fetch_one(&pool)
+    .await?;
     println!("  教师账号: {}", teachers_with_creds);
-    
-    let parents_with_creds = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM persons WHERE role = 'parent' AND username IS NOT NULL")
-        .fetch_one(&pool)
-        .await?;
+
+    let parents_with_creds = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM persons WHERE role = 'parent' AND username IS NOT NULL",
+    )
+    .fetch_one(&pool)
+    .await?;
     println!("  家长账号: {}", parents_with_creds);
-    
-    let admins_with_creds = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM persons WHERE role = 'admin' AND username IS NOT NULL")
-        .fetch_one(&pool)
-        .await?;
+
+    let admins_with_creds = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM persons WHERE role = 'admin' AND username IS NOT NULL",
+    )
+    .fetch_one(&pool)
+    .await?;
     println!("  管理员账号: {}", admins_with_creds);
-    
+
     println!("\n默认登录信息：");
     println!("  用户名: 学号(学生)/工号(教师)/parent_xxxx(家长)");
     println!("  密码: {}", default_password);
     println!("  注意：首次登录后建议修改密码");
-    
+
     Ok(())
 }

@@ -91,6 +91,11 @@ const router = createRouter({
           path: 'chat',
           name: 'chat',
           component: () => import('../views/ChatView.vue')
+        },
+        {
+          path: 'system/monitor',
+          name: 'system-monitor',
+          component: () => import('../views/MonitorView.vue')
         }
       ]
     },
@@ -134,6 +139,10 @@ const router = createRouter({
     {
       path: '/chat',
       redirect: '/dashboard/chat'
+    },
+    {
+      path: '/system/monitor',
+      redirect: '/dashboard/system/monitor'
     }
   ]
 })

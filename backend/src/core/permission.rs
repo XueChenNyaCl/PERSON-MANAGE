@@ -1,8 +1,8 @@
+use serde::{Deserialize, Serialize};
+use sqlx::{PgPool, Row};
 use std::collections::HashSet;
 use std::fs;
-use sqlx::{PgPool, Row};
 use uuid::Uuid;
-use serde::{Deserialize, Serialize};
 
 /// 权限管理器
 pub struct PermissionManager {
@@ -61,7 +61,11 @@ impl PermissionManager {
     }
 
     /// 获取用户的所有有效权限（包括角色权限和用户特定权限）
-    async fn get_user_effective_permissions(&self, user_id: Uuid, role: &str) -> Vec<PermissionNode> {
+    async fn get_user_effective_permissions(
+        &self,
+        user_id: Uuid,
+        role: &str,
+    ) -> Vec<PermissionNode> {
         let mut permissions = Vec::new();
 
         // 获取角色权限
@@ -78,11 +82,14 @@ impl PermissionManager {
     }
 
     /// 获取角色权限
-    pub async fn get_role_permissions(&self, role: &str) -> Result<Vec<PermissionNode>, sqlx::Error> {
+    pub async fn get_role_permissions(
+        &self,
+        role: &str,
+    ) -> Result<Vec<PermissionNode>, sqlx::Error> {
         let rows = sqlx::query(
             "SELECT permission, value, priority FROM permissions 
              WHERE role = $1 
-             ORDER BY priority DESC"
+             ORDER BY priority DESC",
         )
         .bind(role)
         .fetch_all(&self.pool)
@@ -93,7 +100,7 @@ impl PermissionManager {
             let permission_str: String = row.get("permission");
             let value: bool = row.get("value");
             let priority: i32 = row.get("priority");
-            
+
             permissions.push(PermissionNode::new(&permission_str, value, priority));
         }
 
@@ -101,11 +108,14 @@ impl PermissionManager {
     }
 
     /// 获取用户特定权限
-    pub async fn get_user_specific_permissions(&self, user_id: Uuid) -> Result<Vec<PermissionNode>, sqlx::Error> {
+    pub async fn get_user_specific_permissions(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<PermissionNode>, sqlx::Error> {
         let rows = sqlx::query(
             "SELECT permission, value, priority FROM user_permissions 
              WHERE user_id = $1 
-             ORDER BY priority DESC"
+             ORDER BY priority DESC",
         )
         .bind(user_id)
         .fetch_all(&self.pool)
@@ -116,7 +126,7 @@ impl PermissionManager {
             let permission_str: String = row.get("permission");
             let value: bool = row.get("value");
             let priority: i32 = row.get("priority");
-            
+
             let mut node = PermissionNode::from_string(&permission_str, priority);
             node.value = value;
             permissions.push(node);
@@ -126,7 +136,11 @@ impl PermissionManager {
     }
 
     /// 评估权限
-    fn evaluate_permission(&self, permissions: &[PermissionNode], target_permission: &str) -> PermissionResult {
+    fn evaluate_permission(
+        &self,
+        permissions: &[PermissionNode],
+        target_permission: &str,
+    ) -> PermissionResult {
         let mut matched_permissions = Vec::new();
 
         // 查找所有匹配的权限节点
@@ -152,7 +166,13 @@ impl PermissionManager {
     }
 
     /// 添加角色权限
-    pub async fn add_role_permission(&self, role: &str, permission: &str, value: bool, priority: i32) -> Result<(), sqlx::Error> {
+    pub async fn add_role_permission(
+        &self,
+        role: &str,
+        permission: &str,
+        value: bool,
+        priority: i32,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT INTO permissions (role, permission, value, priority) 
              VALUES ($1, $2, $3, $4) 
@@ -169,20 +189,28 @@ impl PermissionManager {
     }
 
     /// 移除角色权限
-    pub async fn remove_role_permission(&self, role: &str, permission: &str) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "DELETE FROM permissions WHERE role = $1 AND permission = $2"
-        )
-        .bind(role)
-        .bind(permission)
-        .execute(&self.pool)
-        .await?;
+    pub async fn remove_role_permission(
+        &self,
+        role: &str,
+        permission: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM permissions WHERE role = $1 AND permission = $2")
+            .bind(role)
+            .bind(permission)
+            .execute(&self.pool)
+            .await?;
 
         Ok(())
     }
 
     /// 添加用户特定权限
-    pub async fn add_user_permission(&self, user_id: Uuid, permission: &str, value: bool, priority: i32) -> Result<(), sqlx::Error> {
+    pub async fn add_user_permission(
+        &self,
+        user_id: Uuid,
+        permission: &str,
+        value: bool,
+        priority: i32,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT INTO user_permissions (user_id, permission, value, priority) 
              VALUES ($1, $2, $3, $4) 
@@ -199,20 +227,25 @@ impl PermissionManager {
     }
 
     /// 移除用户特定权限
-    pub async fn remove_user_permission(&self, user_id: Uuid, permission: &str) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "DELETE FROM user_permissions WHERE user_id = $1 AND permission = $2"
-        )
-        .bind(user_id)
-        .bind(permission)
-        .execute(&self.pool)
-        .await?;
+    pub async fn remove_user_permission(
+        &self,
+        user_id: Uuid,
+        permission: &str,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM user_permissions WHERE user_id = $1 AND permission = $2")
+            .bind(user_id)
+            .bind(permission)
+            .execute(&self.pool)
+            .await?;
 
         Ok(())
     }
 
     /// 获取用户的所有权限（用于登录时返回）
-    pub async fn get_user_permissions_list(&self, user_id: Uuid) -> Result<Vec<String>, sqlx::Error> {
+    pub async fn get_user_permissions_list(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<String>, sqlx::Error> {
         let role = self.get_user_role(user_id).await?;
 
         // 先收集所有可能的权限键，再按 evaluate_permission 计算最终有效值。
@@ -225,30 +258,37 @@ impl PermissionManager {
 
         let mut allowed_permissions = HashSet::new();
         for permission_key in all_permission_keys {
-            if matches!(self.evaluate_permission(&effective_permissions, &permission_key), PermissionResult::Allowed) {
+            if matches!(
+                self.evaluate_permission(&effective_permissions, &permission_key),
+                PermissionResult::Allowed
+            ) {
                 allowed_permissions.insert(permission_key);
             }
         }
 
         Ok(allowed_permissions.into_iter().collect())
     }
-    
+
     /// 获取用户拥有的班级特定权限映射（用于前端显示）
     /// 返回 Map<权限前缀, Vec<班级后缀>>
-    pub async fn get_user_class_permissions(&self, user_id: Uuid) -> Result<std::collections::HashMap<String, Vec<String>>, sqlx::Error> {
-        let mut class_permissions: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-        
+    pub async fn get_user_class_permissions(
+        &self,
+        user_id: Uuid,
+    ) -> Result<std::collections::HashMap<String, Vec<String>>, sqlx::Error> {
+        let mut class_permissions: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+
         // 从用户特定权限中查找班级特定权限
         let user_perms = self.get_user_specific_permissions(user_id).await?;
-        
+
         for node in user_perms {
             if node.value && node.permission.contains("group.") {
                 // 解析权限格式: group.create.abc123
                 let parts: Vec<&str> = node.permission.split('.').collect();
                 if parts.len() >= 3 {
-                    let permission_prefix = parts[..parts.len()-1].join(".");
-                    let class_suffix = parts[parts.len()-1].to_string();
-                    
+                    let permission_prefix = parts[..parts.len() - 1].join(".");
+                    let class_suffix = parts[parts.len() - 1].to_string();
+
                     class_permissions
                         .entry(permission_prefix)
                         .or_default()
@@ -256,76 +296,110 @@ impl PermissionManager {
                 }
             }
         }
-        
+
         Ok(class_permissions)
     }
 
     /// 检查权限，如果拒绝则返回AppError
-    pub async fn require_permission(&self, user_id: Uuid, permission: &str) -> Result<(), crate::core::error::AppError> {
+    pub async fn require_permission(
+        &self,
+        user_id: Uuid,
+        permission: &str,
+    ) -> Result<(), crate::core::error::AppError> {
         match self.check_permission(user_id, permission).await {
             PermissionResult::Allowed => Ok(()),
-            PermissionResult::Denied => Err(crate::core::error::AppError::Auth(
-                format!("没有权限执行此操作: {}", permission)
-            )),
-            PermissionResult::NotSet => Err(crate::core::error::AppError::Auth(
-                format!("权限未设置: {}", permission)
-            )),
+            PermissionResult::Denied => Err(crate::core::error::AppError::Auth(format!(
+                "没有权限执行此操作: {}",
+                permission
+            ))),
+            PermissionResult::NotSet => Err(crate::core::error::AppError::Auth(format!(
+                "权限未设置: {}",
+                permission
+            ))),
         }
     }
 
     /// 获取班级ID的后6位作为权限后缀
     pub fn get_class_suffix(class_id: Uuid) -> String {
         let id_str = class_id.to_string().replace("-", "");
-        id_str.chars().rev().take(6).collect::<String>().chars().rev().collect()
+        id_str
+            .chars()
+            .rev()
+            .take(6)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect()
     }
 
     /// 检查用户是否拥有特定班级的权限
     /// 权限格式: group.create.{class_suffix} 或 class.{class_suffix}（通用班级权限）
-    pub async fn check_class_permission(&self, user_id: Uuid, permission: &str, class_id: Uuid) -> PermissionResult {
+    pub async fn check_class_permission(
+        &self,
+        user_id: Uuid,
+        permission: &str,
+        class_id: Uuid,
+    ) -> PermissionResult {
         let class_suffix = Self::get_class_suffix(class_id);
         let class_permission = format!("{}.{}", permission, class_suffix);
-        
+
         // 首先检查通用权限（如 group.create.* 或 group.*）
         let general_result = self.check_permission(user_id, permission).await;
         if general_result == PermissionResult::Allowed {
             return PermissionResult::Allowed;
         }
-        
+
         // 检查班级通用权限（class.{class_suffix}），如果有则允许所有班级操作
         let class_general_permission = format!("class.{}", class_suffix);
-        let class_general_result = self.check_permission(user_id, &class_general_permission).await;
+        let class_general_result = self
+            .check_permission(user_id, &class_general_permission)
+            .await;
         if class_general_result == PermissionResult::Allowed {
             return PermissionResult::Allowed;
         }
-        
+
         // 然后检查班级特定权限（如 group.create.abc123）
         let class_result = self.check_permission(user_id, &class_permission).await;
         if class_result == PermissionResult::Allowed {
             return PermissionResult::Allowed;
         }
-        
+
         // 如果都没有允许，返回Denied
         PermissionResult::Denied
     }
 
     /// 检查班级权限，如果拒绝则返回AppError
-    pub async fn require_class_permission(&self, user_id: Uuid, permission: &str, class_id: Uuid) -> Result<(), crate::core::error::AppError> {
-        match self.check_class_permission(user_id, permission, class_id).await {
+    pub async fn require_class_permission(
+        &self,
+        user_id: Uuid,
+        permission: &str,
+        class_id: Uuid,
+    ) -> Result<(), crate::core::error::AppError> {
+        match self
+            .check_class_permission(user_id, permission, class_id)
+            .await
+        {
             PermissionResult::Allowed => Ok(()),
-            PermissionResult::Denied => Err(crate::core::error::AppError::Auth(
-                format!("没有权限执行此操作: {} (班级ID: {})", permission, class_id)
-            )),
-            PermissionResult::NotSet => Err(crate::core::error::AppError::Auth(
-                format!("权限未设置: {} (班级ID: {})", permission, class_id)
-            )),
+            PermissionResult::Denied => Err(crate::core::error::AppError::Auth(format!(
+                "没有权限执行此操作: {} (班级ID: {})",
+                permission, class_id
+            ))),
+            PermissionResult::NotSet => Err(crate::core::error::AppError::Auth(format!(
+                "权限未设置: {} (班级ID: {})",
+                permission, class_id
+            ))),
         }
     }
 
     /// 为用户添加班级特定权限
-    pub async fn add_class_permissions_for_teacher(&self, teacher_id: Uuid, class_id: Uuid) -> Result<(), sqlx::Error> {
+    pub async fn add_class_permissions_for_teacher(
+        &self,
+        teacher_id: Uuid,
+        class_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
         let class_suffix = Self::get_class_suffix(class_id);
         let priority = 20; // 高于角色模板的优先级(15)
-        
+
         // 为该班级添加所有小组管理权限
         let permissions = vec![
             format!("class.{}", class_suffix), // 班级通用管理权限
@@ -336,18 +410,23 @@ impl PermissionManager {
             format!("group.update.member.{}", class_suffix),
             format!("group.update.score.{}", class_suffix),
         ];
-        
+
         for permission in permissions {
-            self.add_user_permission(teacher_id, &permission, true, priority).await?;
+            self.add_user_permission(teacher_id, &permission, true, priority)
+                .await?;
         }
-        
+
         Ok(())
     }
 
     /// 移除用户的班级特定权限
-    pub async fn remove_class_permissions_for_teacher(&self, teacher_id: Uuid, class_id: Uuid) -> Result<(), sqlx::Error> {
+    pub async fn remove_class_permissions_for_teacher(
+        &self,
+        teacher_id: Uuid,
+        class_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
         let class_suffix = Self::get_class_suffix(class_id);
-        
+
         // 移除该班级的所有小组管理权限
         let permissions = vec![
             format!("class.{}", class_suffix), // 班级通用管理权限
@@ -358,11 +437,11 @@ impl PermissionManager {
             format!("group.update.member.{}", class_suffix),
             format!("group.update.score.{}", class_suffix),
         ];
-        
+
         for permission in permissions {
             self.remove_user_permission(teacher_id, &permission).await?;
         }
-        
+
         Ok(())
     }
 }
@@ -370,9 +449,9 @@ impl PermissionManager {
 /// 权限节点
 #[derive(Debug, Clone)]
 pub struct PermissionNode {
-    pub permission: String,  // 权限字符串，如 "creat.students", "class.*", "-creat.students"
-    pub value: bool,         // 权限值：true=允许，false=拒绝
-    pub priority: i32,       // 优先级
+    pub permission: String, // 权限字符串，如 "creat.students", "class.*", "-creat.students"
+    pub value: bool,        // 权限值：true=允许，false=拒绝
+    pub priority: i32,      // 优先级
 }
 
 impl PermissionNode {
@@ -392,7 +471,7 @@ impl PermissionNode {
         } else {
             (true, permission_str.to_string())
         };
-        
+
         Self {
             permission,
             value,
@@ -421,8 +500,12 @@ impl PermissionNode {
         loop {
             match (pattern_iter.next(), target_iter.next()) {
                 (Some(&"*"), Some(_)) => continue,
-                (Some(&pattern_part), Some(&target_part)) if pattern_part == target_part => continue,
-                (Some(&pattern_part), Some(&target_part)) if pattern_part != target_part => return false,
+                (Some(&pattern_part), Some(&target_part)) if pattern_part == target_part => {
+                    continue
+                }
+                (Some(&pattern_part), Some(&target_part)) if pattern_part != target_part => {
+                    return false
+                }
                 (None, None) => return true,
                 _ => return false,
             }
@@ -434,12 +517,18 @@ impl PermissionNode {
 #[allow(dead_code)]
 pub async fn check_user_permission(pool: &PgPool, user_id: Uuid, permission: &str) -> bool {
     let manager = PermissionManager::new(pool.clone());
-    
-    matches!(manager.check_permission(user_id, permission).await, PermissionResult::Allowed)
+
+    matches!(
+        manager.check_permission(user_id, permission).await,
+        PermissionResult::Allowed
+    )
 }
 
 /// 工具函数：获取用户权限列表
-pub async fn get_user_permissions(pool: &PgPool, user_id: Uuid) -> Result<Vec<String>, sqlx::Error> {
+pub async fn get_user_permissions(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Vec<String>, sqlx::Error> {
     let manager = PermissionManager::new(pool.clone());
     manager.get_user_permissions_list(user_id).await
 }
@@ -461,14 +550,18 @@ pub struct PermissionTemplate {
 
 impl PermissionTemplate {
     /// 从YAML文件加载权限模板
-    pub fn from_yaml_file(file_path: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn from_yaml_file(
+        file_path: &str,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let yaml_content = fs::read_to_string(file_path)?;
         let template: PermissionTemplate = serde_yaml::from_str(&yaml_content)?;
         Ok(template)
     }
-    
+
     /// 从YAML字符串加载权限模板
-    pub fn from_yaml_str(yaml_content: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn from_yaml_str(
+        yaml_content: &str,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // 预处理YAML内容，处理通配符权限
         // YAML将*解释为别名，需要处理这种情况
         let processed_content = yaml_content
@@ -479,8 +572,12 @@ impl PermissionTemplate {
                     if let Some((_, value)) = line.split_once(":") {
                         let value = value.trim();
                         // 如果值以*开头且不是用引号包围的，添加引号
-                        if value.starts_with('*') && !value.starts_with('"') && !value.starts_with('\'') {
-                            return line.replace(&format!(": {}", value), &format!(": \"{}\"", value));
+                        if value.starts_with('*')
+                            && !value.starts_with('"')
+                            && !value.starts_with('\'')
+                        {
+                            return line
+                                .replace(&format!(": {}", value), &format!(": \"{}\"", value));
                         }
                     }
                 }
@@ -488,21 +585,21 @@ impl PermissionTemplate {
             })
             .collect::<Vec<_>>()
             .join("\n");
-        
+
         println!("=== YAML TEMPLATE DEBUG: Processed YAML ===");
         println!("First 5 lines of processed YAML:");
         for (i, line) in processed_content.lines().take(5).enumerate() {
-            println!("{}: {}", i+1, line);
+            println!("{}: {}", i + 1, line);
         }
-        
+
         let template: PermissionTemplate = serde_yaml::from_str(&processed_content)?;
         Ok(template)
     }
-    
+
     /// 应用模板到指定角色
     pub async fn apply_to_role(&self, pool: &PgPool, role: &str) -> Result<(), sqlx::Error> {
         let manager = PermissionManager::new(pool.clone());
-        
+
         for item in &self.permissions {
             // 处理否定权限（以-开头）
             let (permission_str, value) = if item.permission.starts_with('-') {
@@ -510,12 +607,14 @@ impl PermissionTemplate {
             } else {
                 (item.permission.as_str(), true)
             };
-            manager.add_role_permission(role, permission_str, value, item.priority).await?;
+            manager
+                .add_role_permission(role, permission_str, value, item.priority)
+                .await?;
         }
-        
+
         Ok(())
     }
-    
+
     /// 应用模板到指定用户（作为用户特定权限）
     pub async fn apply_to_user(&self, pool: &PgPool, user_id: Uuid) -> Result<(), sqlx::Error> {
         // 首先清除用户现有的特定权限（可选，根据需求决定）
@@ -523,7 +622,7 @@ impl PermissionTemplate {
         //     .bind(user_id)
         //     .execute(pool)
         //     .await?;
-        
+
         for item in &self.permissions {
             let value = !item.permission.starts_with('-');
             let permission = if item.permission.starts_with('-') {
@@ -531,13 +630,13 @@ impl PermissionTemplate {
             } else {
                 &item.permission
             };
-            
+
             // 添加用户特定权限
             sqlx::query(
                 "INSERT INTO user_permissions (user_id, permission, value, priority) 
                  VALUES ($1, $2, $3, $4)
                  ON CONFLICT (user_id, permission) DO UPDATE SET 
-                 value = EXCLUDED.value, priority = EXCLUDED.priority"
+                 value = EXCLUDED.value, priority = EXCLUDED.priority",
             )
             .bind(user_id)
             .bind(permission)
@@ -546,38 +645,46 @@ impl PermissionTemplate {
             .execute(pool)
             .await?;
         }
-        
+
         Ok(())
     }
 }
 
 /// 加载默认权限模板
-pub fn load_default_template(role: &str) -> Result<PermissionTemplate, Box<dyn std::error::Error + Send + Sync>> {
+pub fn load_default_template(
+    role: &str,
+) -> Result<PermissionTemplate, Box<dyn std::error::Error + Send + Sync>> {
     let template_rel_path = format!("templates/permissions/{}.yaml", role);
     let template_path = crate::core::app_paths::resolve_runtime_path(template_rel_path);
     PermissionTemplate::from_yaml_file(&template_path.to_string_lossy())
 }
 
 /// 为新用户应用角色模板
-pub async fn apply_role_template_to_user(pool: &PgPool, _user_id: Uuid, role: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn apply_role_template_to_user(
+    pool: &PgPool,
+    _user_id: Uuid,
+    role: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match load_default_template(role) {
         Ok(template) => {
             // 应用模板到角色（如果角色权限尚未设置）
             template.apply_to_role(pool, role).await?;
-            
+
             // 也可以选择性地应用到用户特定权限
             // template.apply_to_user(pool, user_id, role).await?;
-            
+
             Ok(())
         }
         Err(e) => {
             // 如果模板文件不存在，使用默认基础权限
             println!("警告: 找不到角色 {} 的权限模板: {}, 使用默认权限", role, e);
-            
+
             // 添加最基本的dashboard.view权限
             let manager = PermissionManager::new(pool.clone());
-            manager.add_role_permission(role, "dashboard.view", true, 10).await?;
-            
+            manager
+                .add_role_permission(role, "dashboard.view", true, 10)
+                .await?;
+
             Ok(())
         }
     }

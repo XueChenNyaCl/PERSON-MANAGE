@@ -1,3 +1,7 @@
+-- 学校管理系统完整数据库迁移脚本
+-- 创建时间: 2026-04-16
+-- 包含: 基础表结构、权限系统、小组系统、AI系统、考勤通知评分系统、在线对话系统、特殊用户系统
+
 -- 启用 UUID 扩展（如果尚未启用）
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
@@ -13,7 +17,9 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+-- ============================================
 -- 1. 基础表结构
+-- ============================================
 
 -- persons 表（人员基础信息）
 CREATE TABLE IF NOT EXISTS persons (
@@ -28,6 +34,8 @@ CREATE TABLE IF NOT EXISTS persons (
     password_hash VARCHAR(255),
     role VARCHAR(20) DEFAULT 'user',
     is_active BOOLEAN DEFAULT true,
+    is_system_user BOOLEAN DEFAULT false,
+    system_user_type VARCHAR(20), -- 'admin', 'normal'
     last_login_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -92,7 +100,9 @@ CREATE TABLE IF NOT EXISTS teacher_class (
     PRIMARY KEY (teacher_id, class_id)
 );
 
+-- ============================================
 -- 2. 权限系统
+-- ============================================
 
 -- permissions 表：存储角色权限节点
 CREATE TABLE IF NOT EXISTS permissions (
@@ -118,7 +128,9 @@ CREATE TABLE IF NOT EXISTS user_permissions (
     UNIQUE(user_id, permission)
 );
 
+-- ============================================
 -- 3. 小组系统
+-- ============================================
 
 -- class_groups 表（小组）
 CREATE TABLE IF NOT EXISTS class_groups (
@@ -150,7 +162,9 @@ CREATE TABLE IF NOT EXISTS group_score_records (
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ============================================
 -- 4. AI 系统
+-- ============================================
 
 -- ai_settings 表（AI 设置）
 CREATE TABLE IF NOT EXISTS ai_settings (
@@ -165,7 +179,9 @@ CREATE TABLE IF NOT EXISTS ai_settings (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ============================================
 -- 5. 考勤、通知、评分系统
+-- ============================================
 
 -- attendances 表（考勤记录）
 CREATE TABLE IF NOT EXISTS attendances (
@@ -207,7 +223,75 @@ CREATE TABLE IF NOT EXISTS scores (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ============================================
+-- 6. 在线对话系统
+-- ============================================
+
+-- chat_conversations 表（会话）
+CREATE TABLE IF NOT EXISTS chat_conversations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_type VARCHAR(20) NOT NULL DEFAULT 'direct',
+    pair_key VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- chat_conversation_members 表（会话成员）
+CREATE TABLE IF NOT EXISTS chat_conversation_members (
+    conversation_id UUID NOT NULL,
+    user_id UUID NOT NULL,
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_read_at TIMESTAMPTZ,
+    PRIMARY KEY (conversation_id, user_id)
+);
+
+-- chat_messages 表（聊天消息）
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID NOT NULL,
+    sender_id UUID NOT NULL,
+    content TEXT NOT NULL,
+    message_type VARCHAR(20) NOT NULL DEFAULT 'text',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================
+-- 7. 特殊用户系统
+-- ============================================
+
+-- special_users 表（特殊用户）
+CREATE TABLE IF NOT EXISTS special_users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_type VARCHAR(20) NOT NULL,  -- 'system', 'iot', 'scerm', 'sysai', 'chatai'
+    identifier VARCHAR(100) NOT NULL,  -- 如 'system', 'iot:device001', 'scerm:screen01'
+    linked_person_id UUID REFERENCES persons(id) ON DELETE SET NULL,  -- 关联的人员ID（可选）
+    api_key_hash VARCHAR(255),  -- API密钥哈希（用于IoT/Scerm等设备登录）
+    description TEXT,
+    is_active BOOLEAN DEFAULT true,
+    last_login_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(user_type, identifier)
+);
+
+-- operation_logs 表（操作日志）
+CREATE TABLE IF NOT EXISTS operation_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    operator_id UUID REFERENCES persons(id) ON DELETE SET NULL,  -- 操作者ID，system为NULL
+    operator_type VARCHAR(20) NOT NULL,  -- 'system', 'admin', 'user', 'chatai', 'sysai'
+    operator_name VARCHAR(100) NOT NULL,  -- 如 'admin:zhangsan' 或 '501001' 或 'system'
+    action VARCHAR(100) NOT NULL,  -- 操作类型
+    resource_type VARCHAR(50),  -- 资源类型：person, class, group等
+    resource_id UUID,  -- 资源ID
+    details JSONB,  -- 详细信息
+    ip_address INET,  -- IP地址
+    user_agent TEXT,  -- 用户代理
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- ============================================
 -- 添加外键约束
+-- ============================================
 
 -- departments 自引用外键
 ALTER TABLE departments 
@@ -315,7 +399,27 @@ ALTER TABLE scores
 ADD CONSTRAINT fk_scores_created_by 
 FOREIGN KEY (created_by) REFERENCES persons(id) ON DELETE SET NULL;
 
+-- chat_conversation_members 外键
+ALTER TABLE chat_conversation_members
+ADD CONSTRAINT fk_chat_conversation_members_conversation_id
+FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE;
+
+ALTER TABLE chat_conversation_members
+ADD CONSTRAINT fk_chat_conversation_members_user_id
+FOREIGN KEY (user_id) REFERENCES persons(id) ON DELETE CASCADE;
+
+-- chat_messages 外键
+ALTER TABLE chat_messages
+ADD CONSTRAINT fk_chat_messages_conversation_id
+FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE;
+
+ALTER TABLE chat_messages
+ADD CONSTRAINT fk_chat_messages_sender_id
+FOREIGN KEY (sender_id) REFERENCES persons(id) ON DELETE CASCADE;
+
+-- ============================================
 -- 索引设计
+-- ============================================
 
 -- persons 表索引
 CREATE INDEX IF NOT EXISTS idx_persons_name ON persons(name);
@@ -379,61 +483,28 @@ CREATE INDEX IF NOT EXISTS idx_scores_person_id ON scores(person_id);
 CREATE INDEX IF NOT EXISTS idx_scores_group_id ON scores(group_id);
 CREATE INDEX IF NOT EXISTS idx_scores_score_type ON scores(score_type);
 
--- 6. 在线对话系统
-
--- chat_conversations 表（会话）
-CREATE TABLE IF NOT EXISTS chat_conversations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    conversation_type VARCHAR(20) NOT NULL DEFAULT 'direct',
-    pair_key VARCHAR(255) NOT NULL UNIQUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- chat_conversation_members 表（会话成员）
-CREATE TABLE IF NOT EXISTS chat_conversation_members (
-    conversation_id UUID NOT NULL,
-    user_id UUID NOT NULL,
-    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_read_at TIMESTAMPTZ,
-    PRIMARY KEY (conversation_id, user_id)
-);
-
--- chat_messages 表（聊天消息）
-CREATE TABLE IF NOT EXISTS chat_messages (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    conversation_id UUID NOT NULL,
-    sender_id UUID NOT NULL,
-    content TEXT NOT NULL,
-    message_type VARCHAR(20) NOT NULL DEFAULT 'text',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- chat_conversation_members 外键
-ALTER TABLE chat_conversation_members
-ADD CONSTRAINT fk_chat_conversation_members_conversation_id
-FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE;
-
-ALTER TABLE chat_conversation_members
-ADD CONSTRAINT fk_chat_conversation_members_user_id
-FOREIGN KEY (user_id) REFERENCES persons(id) ON DELETE CASCADE;
-
--- chat_messages 外键
-ALTER TABLE chat_messages
-ADD CONSTRAINT fk_chat_messages_conversation_id
-FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE;
-
-ALTER TABLE chat_messages
-ADD CONSTRAINT fk_chat_messages_sender_id
-FOREIGN KEY (sender_id) REFERENCES persons(id) ON DELETE CASCADE;
-
 -- chat 表索引
 CREATE INDEX IF NOT EXISTS idx_chat_conversation_members_user_id ON chat_conversation_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id ON chat_messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_sender_id ON chat_messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_chat_conversations_pair_key ON chat_conversations(pair_key);
 
+-- special_users 表索引
+CREATE INDEX IF NOT EXISTS idx_special_users_type ON special_users(user_type);
+CREATE INDEX IF NOT EXISTS idx_special_users_identifier ON special_users(identifier);
+CREATE INDEX IF NOT EXISTS idx_special_users_linked_person ON special_users(linked_person_id);
+CREATE INDEX IF NOT EXISTS idx_special_users_active ON special_users(is_active);
+
+-- operation_logs 表索引
+CREATE INDEX IF NOT EXISTS idx_operation_logs_operator ON operation_logs(operator_id);
+CREATE INDEX IF NOT EXISTS idx_operation_logs_type ON operation_logs(operator_type);
+CREATE INDEX IF NOT EXISTS idx_operation_logs_action ON operation_logs(action);
+CREATE INDEX IF NOT EXISTS idx_operation_logs_created_at ON operation_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_operation_logs_resource ON operation_logs(resource_type, resource_id);
+
+-- ============================================
 -- 创建触发器
+-- ============================================
 
 -- persons 表触发器
 CREATE TRIGGER update_persons_updated_at BEFORE UPDATE ON persons
@@ -474,10 +545,18 @@ CREATE TRIGGER update_chat_conversations_updated_at
     BEFORE UPDATE ON chat_conversations
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- special_users 表触发器
+CREATE TRIGGER update_special_users_updated_at
+    BEFORE UPDATE ON special_users
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
 -- 初始化数据
+-- ============================================
 
 -- 1. 预留管理员账户
-INSERT INTO persons (id, name, username, password_hash, role, type, is_active) 
+INSERT INTO persons (id, name, username, password_hash, role, type, is_active, is_system_user, system_user_type) 
 VALUES (
     '00000000-0000-0000-0000-000000000000',
     '系统管理员',
@@ -486,7 +565,9 @@ VALUES (
     '$2b$12$LQv3c1yqBWVHxpd5g6TAkO6l4dQjHZjXlWfLp.aC.9r7t4bJF1WKK',
     'admin',
     'teacher',
-    true
+    true,
+    true,
+    'admin'
 ) ON CONFLICT (id) DO NOTHING;
 
 -- 2. 插入默认 AI 设置（使用DeepSeek API）
@@ -494,7 +575,23 @@ INSERT INTO ai_settings (api_key, api_base_url, model, default_prompt, temperatu
 VALUES ('your-api-key-here', 'https://api.deepseek.com', 'deepseek-chat', 'You are an AI assistant for a school management system.', 0.7, 1000)
 ON CONFLICT DO NOTHING;
 
--- 3. 添加默认权限
+-- 3. 初始化特殊用户数据
+-- System 用户（系统操作使用，不可登录）
+INSERT INTO special_users (user_type, identifier, description, is_active)
+VALUES ('system', 'system', '系统内部操作用户，用于记录程序自动执行的操作', true)
+ON CONFLICT (user_type, identifier) DO NOTHING;
+
+-- SysAI 用户（暂留，只创建身份）
+INSERT INTO special_users (user_type, identifier, description, is_active)
+VALUES ('sysai', 'SysAI', '系统AI用户，暂留功能', true)
+ON CONFLICT (user_type, identifier) DO NOTHING;
+
+-- ChatAI 用户（用于记录用户聊天AI的操作）
+INSERT INTO special_users (user_type, identifier, description, is_active)
+VALUES ('chatai', 'ChatAI', '聊天AI操作记录用户，用于记录用户让AI执行的操作', true)
+ON CONFLICT (user_type, identifier) DO NOTHING;
+
+-- 4. 添加默认权限
 
 -- 管理员权限
 INSERT INTO permissions (role, permission, value, priority)
@@ -549,6 +646,11 @@ VALUES
     ('admin', 'chat.send', True, 10),
     ('admin', 'chat.manage', True, 10),
     ('admin', 'chat.cross_class', True, 10),
+    ('admin', 'special_user.view', True, 10),
+    ('admin', 'special_user.create', True, 10),
+    ('admin', 'special_user.delete', True, 10),
+    ('admin', 'special_user.link', True, 10),
+    ('admin', 'operation_log.view', True, 10),
     ('admin', 'person.*', True, 5),
     ('admin', 'class.*', True, 5),
     ('admin', 'department.*', True, 5),

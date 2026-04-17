@@ -118,7 +118,7 @@ pub struct PersonListItem {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DataQueryRequest {
-    /// 查询类型: class_list, class_detail, group_list, group_detail, 
+    /// 查询类型: class_list, class_detail, group_list, group_detail,
     ///          department_list, department_detail, overview
     pub query_type: String,
     /// 可选的ID参数（用于详情查询），可以是UUID或名称
@@ -165,7 +165,7 @@ impl ClassDataService {
             LEFT JOIN students s ON c.id = s.class_id
             GROUP BY c.id, c.name, c.grade, c.teacher_id, p.name, c.created_at
             ORDER BY c.grade, c.name
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await
@@ -306,7 +306,7 @@ impl GroupDataService {
             LEFT JOIN group_score_records gsr ON cg.id = gsr.group_id
             GROUP BY cg.id, cg.name, cg.class_id, c.name
             ORDER BY c.name, cg.name
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await
@@ -412,7 +412,7 @@ impl DepartmentDataService {
             LEFT JOIN teachers t ON d.id = t.department_id
             GROUP BY d.id, d.name, d.created_at
             ORDER BY d.name
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await
@@ -422,7 +422,10 @@ impl DepartmentDataService {
     }
 
     /// 获取部门详细信息
-    pub async fn get_department_detail(&self, dept_id: Uuid) -> Result<DepartmentDetailInfo, AppError> {
+    pub async fn get_department_detail(
+        &self,
+        dept_id: Uuid,
+    ) -> Result<DepartmentDetailInfo, AppError> {
         // 获取基本信息
         let basic_info = sqlx::query_as::<_, DepartmentInfo>(
             r#"
@@ -545,16 +548,17 @@ impl MarkdownFormatter {
     /// 格式化班级列表为Markdown
     pub fn format_class_list(classes: &[ClassInfo]) -> String {
         let mut markdown = String::new();
-        
+
         markdown.push_str("# 班级列表\n\n");
-        
+
         if classes.is_empty() {
             markdown.push_str("*暂无班级数据*\n");
             return markdown;
         }
 
         // 按年级分组
-        let mut grade_groups: std::collections::HashMap<i16, Vec<&ClassInfo>> = std::collections::HashMap::new();
+        let mut grade_groups: std::collections::HashMap<i16, Vec<&ClassInfo>> =
+            std::collections::HashMap::new();
         for class in classes {
             grade_groups.entry(class.grade).or_default().push(class);
         }
@@ -572,9 +576,7 @@ impl MarkdownFormatter {
                     let teacher_name = class.teacher_name.as_deref().unwrap_or("未设置");
                     markdown.push_str(&format!(
                         "| {} | {} | {} |\n",
-                        class.name,
-                        teacher_name,
-                        class.student_count
+                        class.name, teacher_name, class.student_count
                     ));
                 }
             }
@@ -590,7 +592,7 @@ impl MarkdownFormatter {
         let class = &detail.basic_info;
 
         markdown.push_str(&format!("# {}（{}年级）\n\n", class.name, class.grade));
-        
+
         // 基本信息
         markdown.push_str("## 基本信息\n\n");
         markdown.push_str(&format!("- **班级名称**: {}\n", class.name));
@@ -628,11 +630,7 @@ impl MarkdownFormatter {
             markdown.push_str("| 学号 | 姓名 |\n");
             markdown.push_str("|------|------|\n");
             for student in &detail.students {
-                markdown.push_str(&format!(
-                    "| {} | {} |\n",
-                    student.student_no,
-                    student.name
-                ));
+                markdown.push_str(&format!("| {} | {} |\n", student.student_no, student.name));
             }
             markdown.push('\n');
         }
@@ -661,18 +659,22 @@ impl MarkdownFormatter {
     /// 格式化小组列表为Markdown
     pub fn format_group_list(groups: &[GroupInfo]) -> String {
         let mut markdown = String::new();
-        
+
         markdown.push_str("# 小组列表\n\n");
-        
+
         if groups.is_empty() {
             markdown.push_str("*暂无小组数据*\n");
             return markdown;
         }
 
         // 按班级分组
-        let mut class_groups: std::collections::HashMap<String, Vec<&GroupInfo>> = std::collections::HashMap::new();
+        let mut class_groups: std::collections::HashMap<String, Vec<&GroupInfo>> =
+            std::collections::HashMap::new();
         for group in groups {
-            class_groups.entry(group.class_name.clone()).or_default().push(group);
+            class_groups
+                .entry(group.class_name.clone())
+                .or_default()
+                .push(group);
         }
 
         for (class_name, groups_in_class) in class_groups {
@@ -700,13 +702,16 @@ impl MarkdownFormatter {
         let group = &detail.basic_info;
 
         markdown.push_str(&format!("# {}\n\n", group.name));
-        
+
         // 基本信息
         markdown.push_str("## 基本信息\n\n");
         markdown.push_str(&format!("- **小组名称**: {}\n", group.name));
         markdown.push_str(&format!("- **所属班级**: {}\n", group.class_name));
         markdown.push_str(&format!("- **成员人数**: {}\n", group.member_count));
-        markdown.push_str(&format!("- **总积分**: {}\n", group.total_score.unwrap_or(0)));
+        markdown.push_str(&format!(
+            "- **总积分**: {}\n",
+            group.total_score.unwrap_or(0)
+        ));
         markdown.push('\n');
 
         // 成员列表
@@ -752,9 +757,9 @@ impl MarkdownFormatter {
     /// 格式化部门列表为Markdown
     pub fn format_department_list(departments: &[DepartmentInfo]) -> String {
         let mut markdown = String::new();
-        
+
         markdown.push_str("# 部门列表\n\n");
-        
+
         if departments.is_empty() {
             markdown.push_str("*暂无部门数据*\n");
             return markdown;
@@ -764,11 +769,7 @@ impl MarkdownFormatter {
         markdown.push_str("|---------|----------|\n");
 
         for dept in departments {
-            markdown.push_str(&format!(
-                "| {} | {} |\n",
-                dept.name,
-                dept.teacher_count
-            ));
+            markdown.push_str(&format!("| {} | {} |\n", dept.name, dept.teacher_count));
         }
 
         markdown
@@ -780,7 +781,7 @@ impl MarkdownFormatter {
         let dept = &detail.basic_info;
 
         markdown.push_str(&format!("# {}\n\n", dept.name));
-        
+
         // 基本信息
         markdown.push_str("## 基本信息\n\n");
         markdown.push_str(&format!("- **部门名称**: {}\n", dept.name));
@@ -861,11 +862,7 @@ impl MarkdownFormatter {
                 2 => "女",
                 _ => "未知",
             };
-            let contact = p
-                .phone
-                .as_deref()
-                .or(p.email.as_deref())
-                .unwrap_or("-");
+            let contact = p.phone.as_deref().or(p.email.as_deref()).unwrap_or("-");
 
             markdown.push_str(&format!(
                 "| {} | {} | {} | {} | {} | {} |\n",
@@ -892,23 +889,24 @@ impl MarkdownFormatter {
         markdown.push_str(&format!("- **班级总数**: {}\n", classes.len()));
         markdown.push_str(&format!("- **小组总数**: {}\n", groups.len()));
         markdown.push_str(&format!("- **部门总数**: {}\n", departments.len()));
-        
+
         let total_students: i64 = classes.iter().map(|c| c.student_count).sum();
         markdown.push_str(&format!("- **学生总数**: {}\n", total_students));
-        
+
         let total_teachers: i64 = departments.iter().map(|d| d.teacher_count).sum();
         markdown.push_str(&format!("- **教师总数**: {}\n", total_teachers));
-        
+
         markdown.push('\n');
 
         // 年级分布
         if !classes.is_empty() {
             markdown.push_str("## 年级分布\n\n");
-            let mut grade_counts: std::collections::HashMap<i16, i64> = std::collections::HashMap::new();
+            let mut grade_counts: std::collections::HashMap<i16, i64> =
+                std::collections::HashMap::new();
             for class in classes {
                 *grade_counts.entry(class.grade).or_default() += class.student_count;
             }
-            
+
             let mut grades: Vec<i16> = grade_counts.keys().copied().collect();
             grades.sort();
 
@@ -945,23 +943,28 @@ impl DataQueryService {
                 Ok(MarkdownFormatter::format_class_list(&classes))
             }
             "class_detail" => {
-                let class_id_str = req.id.as_deref().ok_or(AppError::InvalidInput("缺少班级ID".to_string()))?;
-                
+                let class_id_str = req
+                    .id
+                    .as_deref()
+                    .ok_or(AppError::InvalidInput("缺少班级ID".to_string()))?;
+
                 // 首先尝试作为UUID解析
                 let class_id = if let Ok(uuid) = Uuid::parse_str(class_id_str) {
                     // 检查UUID是否存在
-                    let exists: bool = sqlx::query_scalar(
-                        "SELECT EXISTS(SELECT 1 FROM classes WHERE id = $1)"
-                    )
-                    .bind(uuid)
-                    .fetch_one(&self.pool)
-                    .await
-                    .map_err(AppError::Database)?;
-                    
+                    let exists: bool =
+                        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM classes WHERE id = $1)")
+                            .bind(uuid)
+                            .fetch_one(&self.pool)
+                            .await
+                            .map_err(AppError::Database)?;
+
                     if exists {
                         uuid
                     } else {
-                        return Err(AppError::InvalidInput(format!("班级不存在: {}", class_id_str)));
+                        return Err(AppError::InvalidInput(format!(
+                            "班级不存在: {}",
+                            class_id_str
+                        )));
                     }
                 } else {
                     // 按名称搜索班级
@@ -972,11 +975,14 @@ impl DataQueryService {
                     .fetch_all(&self.pool)
                     .await
                     .map_err(AppError::Database)?;
-                    
+
                     if classes.is_empty() {
-                        return Err(AppError::InvalidInput(format!("未找到名为 '{}' 的班级", class_id_str)));
+                        return Err(AppError::InvalidInput(format!(
+                            "未找到名为 '{}' 的班级",
+                            class_id_str
+                        )));
                     }
-                    
+
                     if classes.len() > 1 {
                         // 有多个同名班级，返回错误信息让AI询问用户
                         let candidates_info: Vec<String> = classes
@@ -989,11 +995,11 @@ impl DataQueryService {
                             candidates_info.join(", ")
                         )));
                     }
-                    
+
                     // 只有一个班级，使用其ID
                     classes[0].0
                 };
-                
+
                 let service = ClassDataService::new(self.pool.clone());
                 let detail = service.get_class_detail(class_id).await?;
                 Ok(MarkdownFormatter::format_class_detail(&detail))
@@ -1004,23 +1010,29 @@ impl DataQueryService {
                 Ok(MarkdownFormatter::format_group_list(&groups))
             }
             "group_detail" => {
-                let group_id_str = req.id.as_deref().ok_or(AppError::InvalidInput("缺少小组ID".to_string()))?;
-                
+                let group_id_str = req
+                    .id
+                    .as_deref()
+                    .ok_or(AppError::InvalidInput("缺少小组ID".to_string()))?;
+
                 // 首先尝试作为UUID解析
                 let group_id = if let Ok(uuid) = Uuid::parse_str(group_id_str) {
                     // 检查UUID是否存在
                     let exists: bool = sqlx::query_scalar(
-                        "SELECT EXISTS(SELECT 1 FROM class_groups WHERE id = $1)"
+                        "SELECT EXISTS(SELECT 1 FROM class_groups WHERE id = $1)",
                     )
                     .bind(uuid)
                     .fetch_one(&self.pool)
                     .await
                     .map_err(AppError::Database)?;
-                    
+
                     if exists {
                         uuid
                     } else {
-                        return Err(AppError::InvalidInput(format!("小组不存在: {}", group_id_str)));
+                        return Err(AppError::InvalidInput(format!(
+                            "小组不存在: {}",
+                            group_id_str
+                        )));
                     }
                 } else {
                     // 按名称搜索小组
@@ -1039,11 +1051,14 @@ impl DataQueryService {
                     .fetch_all(&self.pool)
                     .await
                     .map_err(AppError::Database)?;
-                    
+
                     if groups.is_empty() {
-                        return Err(AppError::InvalidInput(format!("未找到名为 '{}' 的小组", group_id_str)));
+                        return Err(AppError::InvalidInput(format!(
+                            "未找到名为 '{}' 的小组",
+                            group_id_str
+                        )));
                     }
-                    
+
                     if groups.len() > 1 {
                         // 有多个同名小组，返回错误信息让AI询问用户
                         let candidates_info: Vec<String> = groups
@@ -1056,11 +1071,11 @@ impl DataQueryService {
                             candidates_info.join(", ")
                         )));
                     }
-                    
+
                     // 只有一个小组，使用其ID
                     groups[0].0
                 };
-                
+
                 let service = GroupDataService::new(self.pool.clone());
                 let detail = service.get_group_detail(group_id).await?;
                 Ok(MarkdownFormatter::format_group_detail(&detail))
@@ -1071,23 +1086,29 @@ impl DataQueryService {
                 Ok(MarkdownFormatter::format_department_list(&departments))
             }
             "department_detail" => {
-                let dept_id_str = req.id.as_deref().ok_or(AppError::InvalidInput("缺少部门ID".to_string()))?;
-                
+                let dept_id_str = req
+                    .id
+                    .as_deref()
+                    .ok_or(AppError::InvalidInput("缺少部门ID".to_string()))?;
+
                 // 首先尝试作为UUID解析
                 let dept_id = if let Ok(uuid) = Uuid::parse_str(dept_id_str) {
                     // 检查UUID是否存在
                     let exists: bool = sqlx::query_scalar(
-                        "SELECT EXISTS(SELECT 1 FROM departments WHERE id = $1)"
+                        "SELECT EXISTS(SELECT 1 FROM departments WHERE id = $1)",
                     )
                     .bind(uuid)
                     .fetch_one(&self.pool)
                     .await
                     .map_err(AppError::Database)?;
-                    
+
                     if exists {
                         uuid
                     } else {
-                        return Err(AppError::InvalidInput(format!("部门不存在: {}", dept_id_str)));
+                        return Err(AppError::InvalidInput(format!(
+                            "部门不存在: {}",
+                            dept_id_str
+                        )));
                     }
                 } else {
                     // 按名称搜索部门
@@ -1098,11 +1119,14 @@ impl DataQueryService {
                     .fetch_all(&self.pool)
                     .await
                     .map_err(AppError::Database)?;
-                    
+
                     if departments.is_empty() {
-                        return Err(AppError::InvalidInput(format!("未找到名为 '{}' 的部门", dept_id_str)));
+                        return Err(AppError::InvalidInput(format!(
+                            "未找到名为 '{}' 的部门",
+                            dept_id_str
+                        )));
                     }
-                    
+
                     if departments.len() > 1 {
                         // 有多个同名部门，返回错误信息让AI询问用户
                         let candidates_info: Vec<String> = departments
@@ -1115,11 +1139,11 @@ impl DataQueryService {
                             candidates_info.join(", ")
                         )));
                     }
-                    
+
                     // 只有一个部门，使用其ID
                     departments[0].0
                 };
-                
+
                 let service = DepartmentDataService::new(self.pool.clone());
                 let detail = service.get_department_detail(dept_id).await?;
                 Ok(MarkdownFormatter::format_department_detail(&detail))
@@ -1128,14 +1152,21 @@ impl DataQueryService {
                 let class_service = ClassDataService::new(self.pool.clone());
                 let group_service = GroupDataService::new(self.pool.clone());
                 let dept_service = DepartmentDataService::new(self.pool.clone());
-                
+
                 let classes = class_service.get_all_classes().await.unwrap_or_default();
                 let groups = group_service.get_all_groups().await.unwrap_or_default();
                 let departments = dept_service.get_all_departments().await.unwrap_or_default();
-                
-                Ok(MarkdownFormatter::format_overview(&classes, &groups, &departments))
+
+                Ok(MarkdownFormatter::format_overview(
+                    &classes,
+                    &groups,
+                    &departments,
+                ))
             }
-            _ => Err(AppError::InvalidInput(format!("未知的查询类型: {}", req.query_type))),
+            _ => Err(AppError::InvalidInput(format!(
+                "未知的查询类型: {}",
+                req.query_type
+            ))),
         }
     }
 }
@@ -1149,25 +1180,30 @@ pub async fn query_data(
     Json(req): Json<DataQueryRequest>,
 ) -> Result<Json<DataQueryResponse>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
-    
+
     // 获取用户权限
     let permission_manager = PermissionManager::new(pool.clone());
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Auth("无效的用户 ID".to_string()))?;
-    let user_permissions = permission_manager.get_user_permissions_list(user_id).await
+    let user_id =
+        Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户 ID".to_string()))?;
+    let user_permissions = permission_manager
+        .get_user_permissions_list(user_id)
+        .await
         .map_err(|_| AppError::Internal)?;
 
     // 根据查询类型执行相应操作
     let result = match req.query_type.as_str() {
         "class_list" => {
             // 检查权限
-            if !user_permissions.iter().any(|p| p == "class.view" || p == "class.*") {
+            if !user_permissions
+                .iter()
+                .any(|p| p == "class.view" || p == "class.*")
+            {
                 return Err(AppError::Auth("没有查看班级的权限".to_string()));
             }
-            
+
             let service = ClassDataService::new(pool.clone());
             let classes = service.get_all_classes().await?;
-            
+
             if req.format_as_markdown {
                 MarkdownFormatter::format_class_list(&classes)
             } else {
@@ -1175,27 +1211,35 @@ pub async fn query_data(
             }
         }
         "class_detail" => {
-            let class_id_str = req.id.as_deref().ok_or(AppError::InvalidInput("缺少班级ID".to_string()))?;
-            
-            if !user_permissions.iter().any(|p| p == "class.view" || p == "class.*") {
+            let class_id_str = req
+                .id
+                .as_deref()
+                .ok_or(AppError::InvalidInput("缺少班级ID".to_string()))?;
+
+            if !user_permissions
+                .iter()
+                .any(|p| p == "class.view" || p == "class.*")
+            {
                 return Err(AppError::Auth("没有查看班级的权限".to_string()));
             }
-            
+
             // 首先尝试作为UUID解析
             let class_id = if let Ok(uuid) = Uuid::parse_str(class_id_str) {
                 // 检查UUID是否存在
-                let exists: bool = sqlx::query_scalar(
-                    "SELECT EXISTS(SELECT 1 FROM classes WHERE id = $1)"
-                )
-                .bind(uuid)
-                .fetch_one(&pool)
-                .await
-                .map_err(AppError::Database)?;
-                
+                let exists: bool =
+                    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM classes WHERE id = $1)")
+                        .bind(uuid)
+                        .fetch_one(&pool)
+                        .await
+                        .map_err(AppError::Database)?;
+
                 if exists {
                     uuid
                 } else {
-                    return Err(AppError::InvalidInput(format!("班级不存在: {}", class_id_str)));
+                    return Err(AppError::InvalidInput(format!(
+                        "班级不存在: {}",
+                        class_id_str
+                    )));
                 }
             } else {
                 // 按名称搜索班级
@@ -1206,11 +1250,14 @@ pub async fn query_data(
                 .fetch_all(&pool)
                 .await
                 .map_err(AppError::Database)?;
-                
+
                 if classes.is_empty() {
-                    return Err(AppError::InvalidInput(format!("未找到名为 '{}' 的班级", class_id_str)));
+                    return Err(AppError::InvalidInput(format!(
+                        "未找到名为 '{}' 的班级",
+                        class_id_str
+                    )));
                 }
-                
+
                 if classes.len() > 1 {
                     // 有多个同名班级，返回错误信息让AI询问用户
                     let candidates_info: Vec<String> = classes
@@ -1223,14 +1270,14 @@ pub async fn query_data(
                         candidates_info.join(", ")
                     )));
                 }
-                
+
                 // 只有一个班级，使用其ID
                 classes[0].0
             };
-            
+
             let service = ClassDataService::new(pool.clone());
             let detail = service.get_class_detail(class_id).await?;
-            
+
             if req.format_as_markdown {
                 MarkdownFormatter::format_class_detail(&detail)
             } else {
@@ -1238,13 +1285,16 @@ pub async fn query_data(
             }
         }
         "group_list" => {
-            if !user_permissions.iter().any(|p| p == "group.view" || p == "group.*") {
+            if !user_permissions
+                .iter()
+                .any(|p| p == "group.view" || p == "group.*")
+            {
                 return Err(AppError::Auth("没有查看小组的权限".to_string()));
             }
-            
+
             let service = GroupDataService::new(pool.clone());
             let groups = service.get_all_groups().await?;
-            
+
             if req.format_as_markdown {
                 MarkdownFormatter::format_group_list(&groups)
             } else {
@@ -1252,27 +1302,35 @@ pub async fn query_data(
             }
         }
         "group_detail" => {
-            let group_id_str = req.id.as_deref().ok_or(AppError::InvalidInput("缺少小组ID".to_string()))?;
-            
-            if !user_permissions.iter().any(|p| p == "group.view" || p == "group.*") {
+            let group_id_str = req
+                .id
+                .as_deref()
+                .ok_or(AppError::InvalidInput("缺少小组ID".to_string()))?;
+
+            if !user_permissions
+                .iter()
+                .any(|p| p == "group.view" || p == "group.*")
+            {
                 return Err(AppError::Auth("没有查看小组的权限".to_string()));
             }
-            
+
             // 首先尝试作为UUID解析
             let group_id = if let Ok(uuid) = Uuid::parse_str(group_id_str) {
                 // 检查UUID是否存在
-                let exists: bool = sqlx::query_scalar(
-                    "SELECT EXISTS(SELECT 1 FROM class_groups WHERE id = $1)"
-                )
-                .bind(uuid)
-                .fetch_one(&pool)
-                .await
-                .map_err(AppError::Database)?;
-                
+                let exists: bool =
+                    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM class_groups WHERE id = $1)")
+                        .bind(uuid)
+                        .fetch_one(&pool)
+                        .await
+                        .map_err(AppError::Database)?;
+
                 if exists {
                     uuid
                 } else {
-                    return Err(AppError::InvalidInput(format!("小组不存在: {}", group_id_str)));
+                    return Err(AppError::InvalidInput(format!(
+                        "小组不存在: {}",
+                        group_id_str
+                    )));
                 }
             } else {
                 // 按名称搜索小组
@@ -1291,11 +1349,14 @@ pub async fn query_data(
                 .fetch_all(&pool)
                 .await
                 .map_err(AppError::Database)?;
-                
+
                 if groups.is_empty() {
-                    return Err(AppError::InvalidInput(format!("未找到名为 '{}' 的小组", group_id_str)));
+                    return Err(AppError::InvalidInput(format!(
+                        "未找到名为 '{}' 的小组",
+                        group_id_str
+                    )));
                 }
-                
+
                 if groups.len() > 1 {
                     // 有多个同名小组，返回错误信息让AI询问用户
                     let candidates_info: Vec<String> = groups
@@ -1308,14 +1369,14 @@ pub async fn query_data(
                         candidates_info.join(", ")
                     )));
                 }
-                
+
                 // 只有一个小组，使用其ID
                 groups[0].0
             };
-            
+
             let service = GroupDataService::new(pool.clone());
             let detail = service.get_group_detail(group_id).await?;
-            
+
             if req.format_as_markdown {
                 MarkdownFormatter::format_group_detail(&detail)
             } else {
@@ -1323,13 +1384,16 @@ pub async fn query_data(
             }
         }
         "department_list" => {
-            if !user_permissions.iter().any(|p| p == "department.view" || p == "department.*") {
+            if !user_permissions
+                .iter()
+                .any(|p| p == "department.view" || p == "department.*")
+            {
                 return Err(AppError::Auth("没有查看部门的权限".to_string()));
             }
-            
+
             let service = DepartmentDataService::new(pool.clone());
             let departments = service.get_all_departments().await?;
-            
+
             if req.format_as_markdown {
                 MarkdownFormatter::format_department_list(&departments)
             } else {
@@ -1337,27 +1401,35 @@ pub async fn query_data(
             }
         }
         "department_detail" => {
-            let dept_id_str = req.id.as_deref().ok_or(AppError::InvalidInput("缺少部门ID".to_string()))?;
-            
-            if !user_permissions.iter().any(|p| p == "department.view" || p == "department.*") {
+            let dept_id_str = req
+                .id
+                .as_deref()
+                .ok_or(AppError::InvalidInput("缺少部门ID".to_string()))?;
+
+            if !user_permissions
+                .iter()
+                .any(|p| p == "department.view" || p == "department.*")
+            {
                 return Err(AppError::Auth("没有查看部门的权限".to_string()));
             }
-            
+
             // 首先尝试作为UUID解析
             let dept_id = if let Ok(uuid) = Uuid::parse_str(dept_id_str) {
                 // 检查UUID是否存在
-                let exists: bool = sqlx::query_scalar(
-                    "SELECT EXISTS(SELECT 1 FROM departments WHERE id = $1)"
-                )
-                .bind(uuid)
-                .fetch_one(&pool)
-                .await
-                .map_err(AppError::Database)?;
-                
+                let exists: bool =
+                    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM departments WHERE id = $1)")
+                        .bind(uuid)
+                        .fetch_one(&pool)
+                        .await
+                        .map_err(AppError::Database)?;
+
                 if exists {
                     uuid
                 } else {
-                    return Err(AppError::InvalidInput(format!("部门不存在: {}", dept_id_str)));
+                    return Err(AppError::InvalidInput(format!(
+                        "部门不存在: {}",
+                        dept_id_str
+                    )));
                 }
             } else {
                 // 按名称搜索部门
@@ -1368,11 +1440,14 @@ pub async fn query_data(
                 .fetch_all(&pool)
                 .await
                 .map_err(AppError::Database)?;
-                
+
                 if departments.is_empty() {
-                    return Err(AppError::InvalidInput(format!("未找到名为 '{}' 的部门", dept_id_str)));
+                    return Err(AppError::InvalidInput(format!(
+                        "未找到名为 '{}' 的部门",
+                        dept_id_str
+                    )));
                 }
-                
+
                 if departments.len() > 1 {
                     // 有多个同名部门，返回错误信息让AI询问用户
                     let candidates_info: Vec<String> = departments
@@ -1385,14 +1460,14 @@ pub async fn query_data(
                         candidates_info.join(", ")
                     )));
                 }
-                
+
                 // 只有一个部门，使用其ID
                 departments[0].0
             };
-            
+
             let service = DepartmentDataService::new(pool.clone());
             let detail = service.get_department_detail(dept_id).await?;
-            
+
             if req.format_as_markdown {
                 MarkdownFormatter::format_department_detail(&detail)
             } else {
@@ -1404,25 +1479,34 @@ pub async fn query_data(
             let class_service = ClassDataService::new(pool.clone());
             let group_service = GroupDataService::new(pool.clone());
             let dept_service = DepartmentDataService::new(pool.clone());
-            
-            let classes = if user_permissions.iter().any(|p| p == "class.view" || p == "class.*") {
+
+            let classes = if user_permissions
+                .iter()
+                .any(|p| p == "class.view" || p == "class.*")
+            {
                 class_service.get_all_classes().await.unwrap_or_default()
             } else {
                 Vec::new()
             };
-            
-            let groups = if user_permissions.iter().any(|p| p == "group.view" || p == "group.*") {
+
+            let groups = if user_permissions
+                .iter()
+                .any(|p| p == "group.view" || p == "group.*")
+            {
                 group_service.get_all_groups().await.unwrap_or_default()
             } else {
                 Vec::new()
             };
-            
-            let departments = if user_permissions.iter().any(|p| p == "department.view" || p == "department.*") {
+
+            let departments = if user_permissions
+                .iter()
+                .any(|p| p == "department.view" || p == "department.*")
+            {
                 dept_service.get_all_departments().await.unwrap_or_default()
             } else {
                 Vec::new()
             };
-            
+
             if req.format_as_markdown {
                 MarkdownFormatter::format_overview(&classes, &groups, &departments)
             } else {
@@ -1430,17 +1514,25 @@ pub async fn query_data(
                     "classes": classes,
                     "groups": groups,
                     "departments": departments,
-                })).unwrap_or_default()
+                }))
+                .unwrap_or_default()
             }
         }
         _ => {
-            return Err(AppError::InvalidInput(format!("未知的查询类型: {}", req.query_type)));
+            return Err(AppError::InvalidInput(format!(
+                "未知的查询类型: {}",
+                req.query_type
+            )));
         }
     };
 
     Ok(Json(DataQueryResponse {
         data: result,
-        data_type: if req.format_as_markdown { "markdown".to_string() } else { "json".to_string() },
+        data_type: if req.format_as_markdown {
+            "markdown".to_string()
+        } else {
+            "json".to_string()
+        },
         user_permissions,
     }))
 }

@@ -26,8 +26,8 @@ pub async fn get_page_context(
     Json(req): Json<PageContextRequest>,
 ) -> Result<Json<PageContextResponse>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
-    let user_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let user_id =
+        Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
 
     let _ = (&req.path, &req.params, &req.query, user_id);
 
@@ -88,18 +88,21 @@ async fn get_person_context(pool: &sqlx::PgPool) -> Result<serde_json::Value, Ap
                 (SELECT COUNT(*) FROM students s WHERE s.class_id = c.id) AS student_count
          FROM classes c
          ORDER BY c.name
-         LIMIT 5"
+         LIMIT 5",
     )
     .fetch_all(pool)
     .await?;
 
-    let classes_data = classes.into_iter().map(|row| {
-        serde_json::json!({
-            "id": row.get::<Uuid, _>("id").to_string(),
-            "name": row.get::<String, _>("name"),
-            "student_count": row.get::<Option<i64>, _>("student_count").unwrap_or(0)
+    let classes_data = classes
+        .into_iter()
+        .map(|row| {
+            serde_json::json!({
+                "id": row.get::<Uuid, _>("id").to_string(),
+                "name": row.get::<String, _>("name"),
+                "student_count": row.get::<Option<i64>, _>("student_count").unwrap_or(0)
+            })
         })
-    }).collect::<Vec<_>>();
+        .collect::<Vec<_>>();
 
     Ok(serde_json::json!({
         "page": "person",
@@ -125,7 +128,7 @@ async fn get_attendance_context(pool: &sqlx::PgPool) -> Result<serde_json::Value
             SUM(CASE WHEN status = 'early_leave' THEN 1 ELSE 0 END)::bigint AS early_leave,
             SUM(CASE WHEN status = 'excused' THEN 1 ELSE 0 END)::bigint AS excused
          FROM attendances
-         WHERE date = $1"
+         WHERE date = $1",
     )
     .bind(today)
     .fetch_one(pool)
@@ -154,19 +157,22 @@ async fn get_notice_context(pool: &sqlx::PgPool) -> Result<serde_json::Value, Ap
         "SELECT id, title, created_at
          FROM notices
          ORDER BY created_at DESC
-         LIMIT 3"
+         LIMIT 3",
     )
     .fetch_all(pool)
     .await?;
 
-    let recent_data = recent.into_iter().map(|row| {
-        let created_at: chrono::DateTime<chrono::Utc> = row.get("created_at");
-        serde_json::json!({
-            "id": row.get::<Uuid, _>("id").to_string(),
-            "title": row.get::<String, _>("title"),
-            "created_at": created_at.to_rfc3339()
+    let recent_data = recent
+        .into_iter()
+        .map(|row| {
+            let created_at: chrono::DateTime<chrono::Utc> = row.get("created_at");
+            serde_json::json!({
+                "id": row.get::<Uuid, _>("id").to_string(),
+                "title": row.get::<String, _>("title"),
+                "created_at": created_at.to_rfc3339()
+            })
         })
-    }).collect::<Vec<_>>();
+        .collect::<Vec<_>>();
 
     Ok(serde_json::json!({
         "page": "notice",
@@ -184,18 +190,21 @@ async fn get_class_context(pool: &sqlx::PgPool) -> Result<serde_json::Value, App
         "SELECT id, name, grade
          FROM classes
          ORDER BY grade, name
-         LIMIT 5"
+         LIMIT 5",
     )
     .fetch_all(pool)
     .await?;
 
-    let classes_data = classes.into_iter().map(|row| {
-        serde_json::json!({
-            "id": row.get::<Uuid, _>("id").to_string(),
-            "name": row.get::<String, _>("name"),
-            "grade": row.get::<i16, _>("grade")
+    let classes_data = classes
+        .into_iter()
+        .map(|row| {
+            serde_json::json!({
+                "id": row.get::<Uuid, _>("id").to_string(),
+                "name": row.get::<String, _>("name"),
+                "grade": row.get::<i16, _>("grade")
+            })
         })
-    }).collect::<Vec<_>>();
+        .collect::<Vec<_>>();
 
     Ok(serde_json::json!({
         "page": "class",
@@ -215,19 +224,22 @@ async fn get_group_context(pool: &sqlx::PgPool) -> Result<serde_json::Value, App
          FROM class_groups cg
          LEFT JOIN classes c ON cg.class_id = c.id
          ORDER BY cg.name
-         LIMIT 5"
+         LIMIT 5",
     )
     .fetch_all(pool)
     .await?;
 
-    let groups_data = groups.into_iter().map(|row| {
-        serde_json::json!({
-            "id": row.get::<Uuid, _>("id").to_string(),
-            "name": row.get::<String, _>("name"),
-            "class_name": row.get::<Option<String>, _>("class_name"),
-            "member_count": row.get::<Option<i64>, _>("member_count").unwrap_or(0)
+    let groups_data = groups
+        .into_iter()
+        .map(|row| {
+            serde_json::json!({
+                "id": row.get::<Uuid, _>("id").to_string(),
+                "name": row.get::<String, _>("name"),
+                "class_name": row.get::<Option<String>, _>("class_name"),
+                "member_count": row.get::<Option<i64>, _>("member_count").unwrap_or(0)
+            })
         })
-    }).collect::<Vec<_>>();
+        .collect::<Vec<_>>();
 
     Ok(serde_json::json!({
         "page": "group",

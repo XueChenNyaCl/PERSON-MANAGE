@@ -36,10 +36,7 @@ impl axum::response::IntoResponse for AppError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Internal server error".to_string(),
             ),
-            AppError::InternalWithMessage(msg) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                msg,
-            ),
+            AppError::InternalWithMessage(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
             AppError::NotFound => (StatusCode::NOT_FOUND, "Resource not found".to_string()),
         };
 

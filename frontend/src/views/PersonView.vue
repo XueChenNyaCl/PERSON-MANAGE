@@ -4,25 +4,29 @@
       <template #header>
         <div class="card-header">
           <span>人员管理</span>
-          <el-button type="primary" @click="handleAdd">新增人员</el-button>
+          <el-button type="primary" @click="handleAdd" v-if="activeTab === 'persons'">新增人员</el-button>
         </div>
       </template>
-      <el-form :inline="true" :model="searchForm" class="search-form">
-        <el-form-item label="姓名">
-          <el-input v-model="searchForm.search" placeholder="请输入姓名"></el-input>
-        </el-form-item>
-        <el-form-item label="类型">
-          <el-select v-model="searchForm.type" placeholder="请选择类型">
-            <el-option label="全部" value=""></el-option>
-            <el-option label="学生" value="student"></el-option>
-            <el-option label="教师" value="teacher"></el-option>
-            <el-option label="家长" value="parent"></el-option>
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSearch">搜索</el-button>
-        </el-form-item>
-      </el-form>
+
+      <!-- Tab 切换 -->
+      <el-tabs v-model="activeTab" class="person-tabs">
+        <el-tab-pane label="人员列表" name="persons">
+          <el-form :inline="true" :model="searchForm" class="search-form">
+            <el-form-item label="姓名">
+              <el-input v-model="searchForm.search" placeholder="请输入姓名"></el-input>
+            </el-form-item>
+            <el-form-item label="类型">
+              <el-select v-model="searchForm.type" placeholder="请选择类型">
+                <el-option label="全部" value=""></el-option>
+                <el-option label="学生" value="student"></el-option>
+                <el-option label="教师" value="teacher"></el-option>
+                <el-option label="家长" value="parent"></el-option>
+              </el-select>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="handleSearch">搜索</el-button>
+            </el-form-item>
+          </el-form>
       <el-table :data="personList" style="width: 100%" v-loading="loading">
         <el-table-column label="ID" width="180">
           <template #default="scope">
@@ -190,6 +194,13 @@
           </span>
         </template>
       </el-dialog>
+        </el-tab-pane>
+
+        <!-- 特殊用户 Tab -->
+        <el-tab-pane label="特殊用户" name="special">
+          <SpecialUserTab />
+        </el-tab-pane>
+      </el-tabs>
     </el-card>
   </div>
 </template>
@@ -204,6 +215,7 @@ import { classApi } from '../api/class'
 import { departmentApi } from '../api/department'
 import { useAuthStore } from '../store/auth'
 import { useMobile } from '../composables/useMobile'
+import SpecialUserTab from '../components/SpecialUserTab.vue'
 import '../styles/person-view.css'
 
 // 权限管理
@@ -211,6 +223,9 @@ const authStore = useAuthStore()
 
 // 移动端适配
 const { isMobile, loadMobileStyle } = useMobile()
+
+// Tab 切换
+const activeTab = ref('persons')
 
 // 动态加载移动端样式
 onMounted(async () => {

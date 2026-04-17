@@ -9,36 +9,50 @@ use axum::{
     routing::get,
     routing::post,
     routing::put,
-    Json,
-    Router,
+    Json, Router,
 };
 use sqlx::PgPool;
 use tower_http::services::ServeDir;
 
-use crate::api::{ai, ai_actions, ai_assistant, ai_context_provider, ai_data, ai_enhanced, attendance, auth, chat, class, department, debug, group, notice, permission, person, score};
+use std::sync::Arc;
+
+use crate::api::{
+    ai, ai_actions, ai_assistant, ai_context_provider, ai_data, ai_enhanced, attendance, auth,
+    chat, class, debug, department, group, monitor, notice, permission, person, score,
+    special_user,
+};
+use crate::core::database_service::DatabaseService;
 use crate::core::middleware::auth_middleware;
 use crate::core::plugin::PluginManager;
+use crate::core::redis::RedisMonitor;
 
 // 应用状态
 #[derive(Clone)]
 pub struct AppState {
     pub pool: Option<PgPool>,
+    pub db_service: Option<DatabaseService>,
+    pub redis_monitor: Option<Arc<RedisMonitor>>,
     pub static_index_path: PathBuf,
     #[allow(dead_code)]
     pub plugin_manager: PluginManager,
 }
 
-pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Router {
+pub fn create_router(
+    pool: Option<PgPool>,
+    db_service: Option<DatabaseService>,
+    redis_monitor: Option<Arc<RedisMonitor>>,
+    plugin_manager: PluginManager,
+) -> Router {
     let static_dir = crate::core::app_paths::resolve_runtime_path("static");
     let static_index_path = static_dir.join("index.html");
 
     let state = AppState {
         pool,
+        db_service,
+        redis_monitor,
         static_index_path,
         plugin_manager,
     };
-
-
 
     // 公开路由（无需认证）
     let public_routes = Router::new()
@@ -51,6 +65,8 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
         // 认证路由
         .route("/api/auth/login", post(auth::login))
         .route("/api/auth/register", post(auth::register))
+        // 特殊用户登录路由（公开）
+        .route("/api/special-users/login", post(special_user::special_user_login))
         // 公开路由
         .route("/api/persons", get(person::list))
         .route("/api/persons/:id", get(person::get))
@@ -59,7 +75,10 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
         .route("/api/attendances", get(attendance::list))
         .route("/api/scores", get(score::list))
         .route("/api/notices", get(notice::list))
-        .route("/api/permission/teacher/classes", get(person::get_teacher_classes))
+        .route(
+            "/api/permission/teacher/classes",
+            get(person::get_teacher_classes),
+        )
         // WebSocket路由
         .route("/ws", get(crate::ws::handler::ws_handler));
 
@@ -93,15 +112,36 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
         // 权限管理路由
         .route("/api/permissions", get(permission::list_role_permissions))
         .route("/api/permissions", post(permission::add_role_permission))
-        .route("/api/permissions", delete(permission::remove_role_permission))
+        .route(
+            "/api/permissions",
+            delete(permission::remove_role_permission),
+        )
         .route("/api/permissions/check", post(permission::check_permission))
-        .route("/api/permissions/users/:user_id", get(permission::list_user_permissions))
-        .route("/api/permissions/users/:user_id", post(permission::add_user_permission))
-        .route("/api/permissions/users/:user_id", delete(permission::remove_user_permission))
+        .route(
+            "/api/permissions/users/:user_id",
+            get(permission::list_user_permissions),
+        )
+        .route(
+            "/api/permissions/users/:user_id",
+            post(permission::add_user_permission),
+        )
+        .route(
+            "/api/permissions/users/:user_id",
+            delete(permission::remove_user_permission),
+        )
         // 新增权限管理路由
-        .route("/api/permissions/translations", post(permission::get_permission_translations))
-        .route("/api/permissions/keys", get(permission::get_all_permission_keys))
-        .route("/api/permissions/apply-yaml", post(permission::apply_yaml_template))
+        .route(
+            "/api/permissions/translations",
+            post(permission::get_permission_translations),
+        )
+        .route(
+            "/api/permissions/keys",
+            get(permission::get_all_permission_keys),
+        )
+        .route(
+            "/api/permissions/apply-yaml",
+            post(permission::apply_yaml_template),
+        )
         // 小组管理路由（需要认证）
         .route("/api/groups", get(group::list_all))
         .route("/api/groups", post(group::create))
@@ -111,12 +151,24 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
         .route("/api/groups/:id", delete(group::delete))
         .route("/api/groups/:id/members", get(group::get_members))
         .route("/api/groups/:id/members", post(group::add_member))
-        .route("/api/groups/:id/members/:person_id", delete(group::remove_member))
-        .route("/api/groups/:id/score-records", get(group::get_score_records))
+        .route(
+            "/api/groups/:id/members/:person_id",
+            delete(group::remove_member),
+        )
+        .route(
+            "/api/groups/:id/score-records",
+            get(group::get_score_records),
+        )
         .route("/api/groups/:id/score", post(group::update_score))
         .route("/api/chat/conversations", get(chat::list_conversations))
-        .route("/api/chat/conversations/:id/messages", get(chat::list_messages))
-        .route("/api/chat/conversations/:id/messages", post(chat::send_message))
+        .route(
+            "/api/chat/conversations/:id/messages",
+            get(chat::list_messages),
+        )
+        .route(
+            "/api/chat/conversations/:id/messages",
+            post(chat::send_message),
+        )
         .route("/api/chat/conversations/:id/read", post(chat::mark_read))
         // AI 相关路由
         .route("/api/ai/chat", post(ai::chat))
@@ -129,10 +181,31 @@ pub fn create_router(pool: Option<PgPool>, plugin_manager: PluginManager) -> Rou
         .route("/api/ai/context-data", get(ai::get_context_data))
         .route("/api/ai/query", post(ai_data::query_data))
         .route("/api/ai/enhanced-chat", post(ai_enhanced::enhanced_chat))
-        .route("/api/ai/context", post(ai_context_provider::get_page_context))
-        .route("/api/ai/assistant/suggestion", post(ai_assistant::get_assistant_suggestion))
+        .route(
+            "/api/ai/context",
+            post(ai_context_provider::get_page_context),
+        )
+        .route(
+            "/api/ai/assistant/suggestion",
+            post(ai_assistant::get_assistant_suggestion),
+        )
         .route("/api/ai/actions", post(ai_actions::execute_action))
-        .route("/api/ai/actions/available", get(ai_actions::get_available_actions))
+        .route(
+            "/api/ai/actions/available",
+            get(ai_actions::get_available_actions),
+        )
+        // 监控路由（需要管理员权限）
+        .route("/api/monitor/status", get(monitor::get_monitor_status))
+        .route("/api/monitor/buffer", get(monitor::get_buffer_status))
+        .route("/api/monitor/buffer/flush", post(monitor::flush_buffer))
+        // 特殊用户路由
+        .route("/api/special-users", get(special_user::list_special_users))
+        .route("/api/special-users", post(special_user::create_special_user))
+        .route("/api/special-users/:id", put(special_user::update_special_user))
+        .route("/api/special-users/:id", delete(special_user::delete_special_user))
+        .route("/api/special-users/:id/link", post(special_user::link_person_to_special_user))
+        // 操作日志路由
+        .route("/api/operation-logs", get(special_user::list_operation_logs))
         .layer(middleware::from_fn(auth_middleware));
 
     // 合并路由
@@ -173,26 +246,44 @@ struct DbStatusResponse {
 }
 
 async fn db_status_check(State(state): State<AppState>) -> Json<DbStatusResponse> {
-    match &state.pool {
-        Some(pool) => {
-            // 尝试执行一个简单的SQL查询来测试连接
-            match sqlx::query("SELECT 1").execute(pool).await {
-                Ok(_) => Json(DbStatusResponse {
-                    status: "ok".to_string(),
-                    message: "Database connection is active".to_string(),
-                    details: Some("Successfully executed test query".to_string()),
-                }),
-                Err(e) => Json(DbStatusResponse {
-                    status: "error".to_string(),
-                    message: "Database connection exists but query failed".to_string(),
-                    details: Some(format!("Error: {}", e)),
-                }),
+    let pg_status = match &state.pool {
+        Some(pool) => match sqlx::query("SELECT 1").execute(pool).await {
+            Ok(_) => ("connected", "PostgreSQL connection is active".to_string()),
+            Err(e) => ("error", format!("PostgreSQL query failed: {}", e)),
+        },
+        None => (
+            "not_initialized",
+            "PostgreSQL pool not initialized".to_string(),
+        ),
+    };
+
+    let redis_status = match &state.db_service {
+        Some(db_service) => {
+            let status = db_service.status().await;
+            if status.redis_connected {
+                ("connected", "Redis connection is active".to_string())
+            } else {
+                ("disconnected", "Redis is not connected".to_string())
             }
         }
-        None => Json(DbStatusResponse {
-            status: "error".to_string(),
-            message: "Database connection pool not initialized".to_string(),
-            details: Some("Check database configuration and ensure PostgreSQL is running".to_string()),
-        }),
-    }
+        None => (
+            "not_initialized",
+            "Database service not initialized".to_string(),
+        ),
+    };
+
+    let overall_status = if pg_status.0 == "connected" {
+        "ok"
+    } else {
+        "error"
+    };
+
+    Json(DbStatusResponse {
+        status: overall_status.to_string(),
+        message: format!("PostgreSQL: {}, Redis: {}", pg_status.1, redis_status.1),
+        details: Some(format!(
+            "PostgreSQL status: {}, Redis status: {}",
+            pg_status.0, redis_status.0
+        )),
+    })
 }

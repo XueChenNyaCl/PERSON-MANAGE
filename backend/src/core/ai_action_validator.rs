@@ -1,6 +1,6 @@
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use serde_json::Value;
 use uuid::Uuid;
-use chrono::{NaiveDate, NaiveTime, NaiveDateTime};
 
 use crate::core::error::AppError;
 
@@ -270,195 +270,210 @@ impl AIActionValidator {
     /// 通用字段验证函数
     pub fn validate_field(value: &Value, rule: &FieldRule) -> Result<(), AppError> {
         let field_value = value.get(rule.field_name);
-        
+
         // 检查必填字段
         if rule.required && field_value.is_none() {
-            return Err(AppError::InvalidInput(
-                format!("缺少必填字段: {}", rule.field_name)
-            ));
+            return Err(AppError::InvalidInput(format!(
+                "缺少必填字段: {}",
+                rule.field_name
+            )));
         }
-        
+
         let Some(field_value) = field_value else {
             return Ok(());
         };
-        
+
         // 如果字段是null或空字符串，也跳过（非必填）
-        if field_value.is_null() || 
-           (field_value.is_string() && field_value.as_str().unwrap_or("").is_empty()) {
+        if field_value.is_null()
+            || (field_value.is_string() && field_value.as_str().unwrap_or("").is_empty())
+        {
             if rule.required {
-                return Err(AppError::InvalidInput(
-                    format!("必填字段不能为空: {}", rule.field_name)
-                ));
+                return Err(AppError::InvalidInput(format!(
+                    "必填字段不能为空: {}",
+                    rule.field_name
+                )));
             }
             return Ok(());
         }
-        
+
         // 根据字段类型进行验证
         match rule.field_type {
             FieldType::String => {
-                let s = field_value.as_str()
-                    .ok_or_else(|| AppError::InvalidInput(
-                        format!("字段 {} 必须是字符串类型", rule.field_name)
-                    ))?;
-                
+                let s = field_value.as_str().ok_or_else(|| {
+                    AppError::InvalidInput(format!("字段 {} 必须是字符串类型", rule.field_name))
+                })?;
+
                 if let Some(max_len) = rule.max_length {
                     if s.len() > max_len {
-                        return Err(AppError::InvalidInput(
-                            format!("字段 {} 长度不能超过 {} 个字符", rule.field_name, max_len)
-                        ));
+                        return Err(AppError::InvalidInput(format!(
+                            "字段 {} 长度不能超过 {} 个字符",
+                            rule.field_name, max_len
+                        )));
                     }
                 }
-                
+
                 if let Some(allowed) = &rule.allowed_values {
                     if !allowed.contains(&s) {
-                        return Err(AppError::InvalidInput(
-                            format!("字段 {} 的值无效，允许的值: {:?}", rule.field_name, allowed)
-                        ));
+                        return Err(AppError::InvalidInput(format!(
+                            "字段 {} 的值无效，允许的值: {:?}",
+                            rule.field_name, allowed
+                        )));
                     }
                 }
             }
-            
+
             FieldType::Integer => {
-                let n = field_value.as_i64()
-                    .ok_or_else(|| AppError::InvalidInput(
-                        format!("字段 {} 必须是整数类型", rule.field_name)
-                    ))?;
-                
+                let n = field_value.as_i64().ok_or_else(|| {
+                    AppError::InvalidInput(format!("字段 {} 必须是整数类型", rule.field_name))
+                })?;
+
                 if let Some(min) = rule.min_value {
                     if n < min {
-                        return Err(AppError::InvalidInput(
-                            format!("字段 {} 的值不能小于 {}", rule.field_name, min)
-                        ));
+                        return Err(AppError::InvalidInput(format!(
+                            "字段 {} 的值不能小于 {}",
+                            rule.field_name, min
+                        )));
                     }
                 }
-                
+
                 if let Some(max) = rule.max_value {
                     if n > max {
-                        return Err(AppError::InvalidInput(
-                            format!("字段 {} 的值不能大于 {}", rule.field_name, max)
-                        ));
+                        return Err(AppError::InvalidInput(format!(
+                            "字段 {} 的值不能大于 {}",
+                            rule.field_name, max
+                        )));
                     }
                 }
             }
-            
+
             FieldType::Boolean => {
                 if !field_value.is_boolean() {
-                    return Err(AppError::InvalidInput(
-                        format!("字段 {} 必须是布尔类型", rule.field_name)
-                    ));
+                    return Err(AppError::InvalidInput(format!(
+                        "字段 {} 必须是布尔类型",
+                        rule.field_name
+                    )));
                 }
             }
-            
+
             FieldType::Date => {
-                let s = field_value.as_str()
-                    .ok_or_else(|| AppError::InvalidInput(
-                        format!("字段 {} 必须是字符串类型", rule.field_name)
-                    ))?;
-                
-                NaiveDate::parse_from_str(s, "%Y-%m-%d")
-                    .map_err(|_| AppError::InvalidInput(
-                        format!("字段 {} 日期格式无效，应为YYYY-MM-DD: {}", rule.field_name, s)
-                    ))?;
+                let s = field_value.as_str().ok_or_else(|| {
+                    AppError::InvalidInput(format!("字段 {} 必须是字符串类型", rule.field_name))
+                })?;
+
+                NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| {
+                    AppError::InvalidInput(format!(
+                        "字段 {} 日期格式无效，应为YYYY-MM-DD: {}",
+                        rule.field_name, s
+                    ))
+                })?;
             }
-            
+
             FieldType::Time => {
-                let s = field_value.as_str()
-                    .ok_or_else(|| AppError::InvalidInput(
-                        format!("字段 {} 必须是字符串类型", rule.field_name)
-                    ))?;
-                
-                NaiveTime::parse_from_str(s, "%H:%M:%S")
-                    .map_err(|_| AppError::InvalidInput(
-                        format!("字段 {} 时间格式无效，应为HH:MM:SS: {}", rule.field_name, s)
-                    ))?;
+                let s = field_value.as_str().ok_or_else(|| {
+                    AppError::InvalidInput(format!("字段 {} 必须是字符串类型", rule.field_name))
+                })?;
+
+                NaiveTime::parse_from_str(s, "%H:%M:%S").map_err(|_| {
+                    AppError::InvalidInput(format!(
+                        "字段 {} 时间格式无效，应为HH:MM:SS: {}",
+                        rule.field_name, s
+                    ))
+                })?;
             }
-            
+
             FieldType::DateTime => {
-                let s = field_value.as_str()
-                    .ok_or_else(|| AppError::InvalidInput(
-                        format!("字段 {} 必须是字符串类型", rule.field_name)
-                    ))?;
-                
+                let s = field_value.as_str().ok_or_else(|| {
+                    AppError::InvalidInput(format!("字段 {} 必须是字符串类型", rule.field_name))
+                })?;
+
                 let _ = NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%SZ")
                     .or_else(|_| NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S"))
-                    .map_err(|_| AppError::InvalidInput(
-                        format!("字段 {} 日期时间格式无效: {}", rule.field_name, s)
-                    ))?;
+                    .map_err(|_| {
+                        AppError::InvalidInput(format!(
+                            "字段 {} 日期时间格式无效: {}",
+                            rule.field_name, s
+                        ))
+                    })?;
             }
-            
+
             FieldType::Uuid => {
-                let s = field_value.as_str()
-                    .ok_or_else(|| AppError::InvalidInput(
-                        format!("字段 {} 必须是字符串类型", rule.field_name)
-                    ))?;
-                
-                Uuid::parse_str(s)
-                    .map_err(|_| AppError::InvalidInput(
-                        format!("字段 {} UUID格式无效: {}", rule.field_name, s)
-                    ))?;
+                let s = field_value.as_str().ok_or_else(|| {
+                    AppError::InvalidInput(format!("字段 {} 必须是字符串类型", rule.field_name))
+                })?;
+
+                Uuid::parse_str(s).map_err(|_| {
+                    AppError::InvalidInput(format!("字段 {} UUID格式无效: {}", rule.field_name, s))
+                })?;
             }
         }
-        
+
         Ok(())
     }
 
     /// 验证创建人员参数
     pub fn validate_create_person(params: &Value) -> Result<(), AppError> {
         let rules = ValidationRules::create_person_rules();
-        
+
         for rule in &rules {
             Self::validate_field(params, rule)?;
         }
-        
+
         // 条件必填验证
-        let type_ = params.get("type")
+        let type_ = params
+            .get("type")
             .and_then(|v| v.as_str())
             .ok_or_else(|| AppError::InvalidInput("缺少type字段".to_string()))?;
-        
+
         match type_ {
             "student" => {
-                let student_no = params.get("student_no")
+                let student_no = params
+                    .get("student_no")
                     .and_then(|v| v.as_str())
                     .filter(|s| !s.is_empty());
-                
+
                 if student_no.is_none() {
-                    return Err(AppError::InvalidInput("学生缺少必填字段: student_no".to_string()));
+                    return Err(AppError::InvalidInput(
+                        "学生缺少必填字段: student_no".to_string(),
+                    ));
                 }
             }
             "teacher" => {
-                let employee_no = params.get("employee_no")
+                let employee_no = params
+                    .get("employee_no")
                     .and_then(|v| v.as_str())
                     .filter(|s| !s.is_empty());
-                
+
                 if employee_no.is_none() {
-                    return Err(AppError::InvalidInput("教师缺少必填字段: employee_no".to_string()));
+                    return Err(AppError::InvalidInput(
+                        "教师缺少必填字段: employee_no".to_string(),
+                    ));
                 }
             }
             _ => {}
         }
-        
+
         Ok(())
     }
 
     /// 验证创建考勤参数
     pub fn validate_create_attendance(params: &Value) -> Result<(), AppError> {
         let rules = ValidationRules::create_attendance_rules();
-        
+
         for rule in &rules {
             Self::validate_field(params, rule)?;
         }
-        
+
         Ok(())
     }
 
     /// 验证创建成绩参数
     pub fn validate_create_score(params: &Value) -> Result<(), AppError> {
         let rules = ValidationRules::create_score_rules();
-        
+
         for rule in &rules {
             Self::validate_field(params, rule)?;
         }
-        
+
         Ok(())
     }
 }

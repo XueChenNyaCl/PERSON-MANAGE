@@ -1,0 +1,248 @@
+.monitor-view {
+  padding: 24px;
+  background-color: #f5f7fa;
+  min-height: 100vh;
+}
+
+.monitor-header {
+  margin-bottom: 24px;
+}
+
+.monitor-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1d2129;
+  margin: 0 0 8px 0;
+}
+
+.monitor-subtitle {
+  font-size: 14px;
+  color: #86909c;
+  margin: 0;
+}
+
+.monitor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.monitor-card {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  transition: box-shadow 0.3s ease;
+}
+
+.monitor-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid #f2f3f5;
+}
+
+.card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 12px;
+  font-size: 20px;
+}
+
+.card-icon.postgresql {
+  background-color: #e6f4ff;
+  color: #165dff;
+}
+
+.card-icon.redis {
+  background-color: #fff2e8;
+  color: #ff7d00;
+}
+
+.card-icon.memory {
+  background-color: #f6ffed;
+  color: #52c41a;
+}
+
+.card-icon.stats {
+  background-color: #f0f5ff;
+  color: #722ed1;
+}
+
+.card-icon.buffer {
+  background-color: #e6fffb;
+  color: #13c2c2;
+}
+
+.card-title {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1d2129;
+}
+
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-online {
+  background-color: #e6f4ff;
+  color: #165dff;
+}
+
+.status-offline {
+  background-color: #f2f3f5;
+  color: #86909c;
+}
+
+.card-content {
+  padding: 16px;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.info-row:last-child {
+  margin-bottom: 0;
+}
+
+.info-label {
+  width: 80px;
+  font-size: 13px;
+  color: #86909c;
+  flex-shrink: 0;
+}
+
+.info-value {
+  flex: 1;
+  font-size: 13px;
+  color: #1d2129;
+  word-break: break-all;
+}
+
+.text-success {
+  color: #52c41a;
+}
+
+.text-error {
+  color: #f53f3f;
+}
+
+.memory-progress {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 8px;
+  background-color: #f2f3f5;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-right: 12px;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: #165dff;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-fill.progress-warning {
+  background-color: #ff7d00;
+}
+
+.progress-fill.progress-danger {
+  background-color: #f53f3f;
+}
+
+.progress-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1d2129;
+  min-width: 50px;
+  text-align: right;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.stat-item {
+  text-align: center;
+  padding: 12px;
+  background-color: #f7f8fa;
+  border-radius: 6px;
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1d2129;
+  margin-bottom: 4px;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #86909c;
+}
+
+.card-actions {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f2f3f5;
+}
+
+.monitor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.last-update {
+  font-size: 13px;
+  color: #86909c;
+}
+
+@media (max-width: 768px) {
+  .monitor-view {
+    padding: 16px;
+  }
+
+  .monitor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .monitor-footer {
+    flex-direction: column;
+    gap: 12px;
+    text-align: center;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

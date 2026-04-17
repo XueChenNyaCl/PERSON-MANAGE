@@ -1,8 +1,7 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
-    Extension,
+    Extension, Json,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
@@ -13,6 +12,7 @@ use crate::core::auth::Claims;
 use crate::core::error::AppError;
 use crate::core::password::hash_password;
 use crate::core::permission::PermissionManager;
+use crate::core::redis::cache::CacheKey;
 use crate::models::person::{
     ParentResponse, Person, PersonCreate, PersonResponse, PersonUpdate, StudentResponse,
     TeacherResponse,
@@ -43,7 +43,47 @@ pub async fn list(
     let page = query.page.unwrap_or(1);
     let limit = query.limit.unwrap_or(20);
 
-    // 检查数据库连接
+    // 优先使用 DatabaseService（带缓存）
+    if let Some(db_service) = &state.db_service {
+        let cache_key = CacheKey::persons_list(Some(&format!(
+            "{}:{}:{:?}:{:?}:{:?}",
+            page, limit, query.r#type, query.class_id, query.department_id
+        )));
+
+        // 尝试从缓存获取
+        match db_service
+            .query_cached::<Vec<PersonResponse>>(&cache_key)
+            .await
+        {
+            Ok(Some(cached)) => {
+                tracing::trace!("Cache hit for persons list: {}", cache_key);
+                // 获取总数（也尝试从缓存）
+                let count_cache_key = CacheKey::persons_list(Some(&format!(
+                    "count:{:?}:{:?}:{:?}",
+                    query.r#type, query.class_id, query.department_id
+                )));
+                let total = match db_service.query_cached::<i64>(&count_cache_key).await {
+                    Ok(Some(t)) => t,
+                    _ => cached.len() as i64,
+                };
+
+                return Ok(Json(ListResponse {
+                    items: cached,
+                    total,
+                    page,
+                    limit,
+                }));
+            }
+            Ok(None) => {
+                tracing::trace!("Cache miss for persons list: {}", cache_key);
+            }
+            Err(e) => {
+                tracing::warn!("Cache read error: {}, falling back to database", e);
+            }
+        }
+    }
+
+    // 回退到直接数据库查询
     if let Some(pool) = state.pool {
         let (items, total) = list_persons(
             &pool,
@@ -55,6 +95,26 @@ pub async fn list(
             limit,
         )
         .await?;
+
+        // 写入缓存
+        if let Some(db_service) = &state.db_service {
+            let cache_key = CacheKey::persons_list(Some(&format!(
+                "{}:{}:{:?}:{:?}:{:?}",
+                page, limit, query.r#type, query.class_id, query.department_id
+            )));
+            if let Err(e) = db_service.cache_set(&cache_key, &items, None).await {
+                tracing::warn!("Failed to cache persons list: {}", e);
+            }
+
+            // 缓存总数
+            let count_cache_key = CacheKey::persons_list(Some(&format!(
+                "count:{:?}:{:?}:{:?}",
+                query.r#type, query.class_id, query.department_id
+            )));
+            if let Err(e) = db_service.cache_set(&count_cache_key, &total, None).await {
+                tracing::warn!("Failed to cache persons count: {}", e);
+            }
+        }
 
         Ok(Json(ListResponse {
             items,
@@ -81,13 +141,54 @@ pub async fn create(
     println!("=== CREATE PERSON DEBUG ===");
     println!("Received payload: {:?}", payload);
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
-    
+
     // 检查创建人员权限
-    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let user_id =
+        Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
     let manager = PermissionManager::new(pool.clone());
     manager.require_permission(user_id, "person.create").await?;
 
+    // 尝试使用写入缓冲（如果可用）
+    if let Some(db_service) = &state.db_service {
+        if let Some(buffer) = db_service.get_write_buffer() {
+            // 将人员创建请求序列化为JSON并放入缓冲队列
+            let person_data = serde_json::to_value(&payload)
+                .map_err(|e| AppError::InternalWithMessage(format!("序列化失败: {}", e)))?;
+
+            match buffer.buffer_insert("persons", person_data).await {
+                Ok(_) => {
+                    tracing::info!("Person creation buffered successfully");
+                    // 返回一个临时响应，表示请求已接受并缓冲
+                    // 使人员列表缓存失效
+                    if let Err(e) = db_service.invalidate_entity_cache("persons", None).await {
+                        tracing::warn!("Failed to invalidate persons cache after buffer: {}", e);
+                    }
+                    // 由于缓冲写入是异步的，返回一个临时ID和基本信息
+                    return Ok(Json(PersonResponse::Temporary {
+                        message: "人员创建请求已接受，正在缓冲处理中".to_string(),
+                    }));
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to buffer person creation, falling back to immediate: {}",
+                        e
+                    );
+                    // 缓冲失败，继续执行直接写入
+                }
+            }
+        }
+    }
+
+    // 直接写入数据库（回退方案）
     let person = create_person(&pool, payload).await?;
+
+    // 使人员列表缓存失效
+    if let Some(db_service) = &state.db_service {
+        if let Err(e) = db_service.invalidate_entity_cache("persons", None).await {
+            tracing::warn!("Failed to invalidate persons cache after create: {}", e);
+        }
+    }
+
     Ok(Json(person))
 }
 
@@ -95,9 +196,37 @@ pub async fn get(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<PersonResponse>, AppError> {
-    let pool = state.pool.ok_or_else(|| AppError::NotFound)?;
+    // 优先使用 DatabaseService（带缓存）
+    if let Some(db_service) = &state.db_service {
+        let cache_key = CacheKey::person(&id.to_string());
 
+        // 尝试从缓存获取
+        match db_service.query_cached::<PersonResponse>(&cache_key).await {
+            Ok(Some(person)) => {
+                tracing::trace!("Cache hit for person: {}", cache_key);
+                return Ok(Json(person));
+            }
+            Ok(None) => {
+                tracing::trace!("Cache miss for person: {}", cache_key);
+            }
+            Err(e) => {
+                tracing::warn!("Cache read error: {}, falling back to database", e);
+            }
+        }
+    }
+
+    // 回退到直接数据库查询
+    let pool = state.pool.ok_or_else(|| AppError::NotFound)?;
     let person = get_person(&pool, id).await?;
+
+    // 写入缓存
+    if let Some(db_service) = &state.db_service {
+        let cache_key = CacheKey::person(&id.to_string());
+        if let Err(e) = db_service.cache_set(&cache_key, &person, None).await {
+            tracing::warn!("Failed to cache person: {}", e);
+        }
+    }
+
     Ok(Json(person))
 }
 
@@ -108,13 +237,74 @@ pub async fn update(
     Json(payload): Json<PersonUpdate>,
 ) -> Result<Json<PersonResponse>, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
-    
+
     // 检查更新人员权限
-    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let user_id =
+        Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
     let manager = PermissionManager::new(pool.clone());
     manager.require_permission(user_id, "person.update").await?;
 
+    // 尝试使用写入缓冲（如果可用）
+    if let Some(db_service) = &state.db_service {
+        if let Some(buffer) = db_service.get_write_buffer() {
+            // 将人员更新请求序列化为JSON并放入缓冲队列
+            let update_data = serde_json::to_value(&payload)
+                .map_err(|e| AppError::InternalWithMessage(format!("序列化失败: {}", e)))?;
+
+            match buffer
+                .buffer_update("persons", &id.to_string(), update_data)
+                .await
+            {
+                Ok(_) => {
+                    tracing::info!("Person update buffered successfully");
+                    // 使该人员的缓存和列表缓存失效
+                    if let Err(e) = db_service
+                        .invalidate_entity_cache("person", Some(&id.to_string()))
+                        .await
+                    {
+                        tracing::warn!("Failed to invalidate person cache after buffer: {}", e);
+                    }
+                    if let Err(e) = db_service.invalidate_entity_cache("persons", None).await {
+                        tracing::warn!(
+                            "Failed to invalidate persons list cache after buffer: {}",
+                            e
+                        );
+                    }
+                    // 返回临时响应
+                    return Ok(Json(PersonResponse::Temporary {
+                        message: "人员更新请求已接受，正在缓冲处理中".to_string(),
+                    }));
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to buffer person update, falling back to immediate: {}",
+                        e
+                    );
+                    // 缓冲失败，继续执行直接写入
+                }
+            }
+        }
+    }
+
+    // 直接写入数据库（回退方案）
     let person = update_person(&pool, id, payload).await?;
+
+    // 使该人员的缓存和列表缓存失效
+    if let Some(db_service) = &state.db_service {
+        if let Err(e) = db_service
+            .invalidate_entity_cache("person", Some(&id.to_string()))
+            .await
+        {
+            tracing::warn!("Failed to invalidate person cache after update: {}", e);
+        }
+        if let Err(e) = db_service.invalidate_entity_cache("persons", None).await {
+            tracing::warn!(
+                "Failed to invalidate persons list cache after update: {}",
+                e
+            );
+        }
+    }
+
     Ok(Json(person))
 }
 
@@ -124,13 +314,64 @@ pub async fn delete(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, AppError> {
     let pool = state.pool.ok_or_else(|| AppError::Internal)?;
-    
+
     // 检查删除人员权限
-    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
+    let user_id =
+        Uuid::parse_str(&claims.sub).map_err(|_| AppError::Auth("无效的用户ID".to_string()))?;
     let manager = PermissionManager::new(pool.clone());
     manager.require_permission(user_id, "person.delete").await?;
 
+    // 尝试使用写入缓冲（如果可用）
+    if let Some(db_service) = &state.db_service {
+        if let Some(buffer) = db_service.get_write_buffer() {
+            match buffer.buffer_delete("persons", &id.to_string()).await {
+                Ok(_) => {
+                    tracing::info!("Person delete buffered successfully");
+                    // 使该人员的缓存和列表缓存失效
+                    if let Err(e) = db_service
+                        .invalidate_entity_cache("person", Some(&id.to_string()))
+                        .await
+                    {
+                        tracing::warn!("Failed to invalidate person cache after buffer: {}", e);
+                    }
+                    if let Err(e) = db_service.invalidate_entity_cache("persons", None).await {
+                        tracing::warn!(
+                            "Failed to invalidate persons list cache after buffer: {}",
+                            e
+                        );
+                    }
+                    // 返回202 Accepted表示请求已接受并缓冲
+                    return Ok(StatusCode::ACCEPTED);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to buffer person delete, falling back to immediate: {}",
+                        e
+                    );
+                    // 缓冲失败，继续执行直接删除
+                }
+            }
+        }
+    }
+
+    // 直接删除数据库（回退方案）
     delete_person(&pool, id).await?;
+
+    // 使该人员的缓存和列表缓存失效
+    if let Some(db_service) = &state.db_service {
+        if let Err(e) = db_service
+            .invalidate_entity_cache("person", Some(&id.to_string()))
+            .await
+        {
+            tracing::warn!("Failed to invalidate person cache after delete: {}", e);
+        }
+        if let Err(e) = db_service.invalidate_entity_cache("persons", None).await {
+            tracing::warn!(
+                "Failed to invalidate persons list cache after delete: {}",
+                e
+            );
+        }
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -169,15 +410,16 @@ pub async fn get_teacher_classes(
         .fetch_all(&pool)
         .await?;
 
-        let classes: Vec<ClassWithTeacherInfo> = rows.into_iter().map(|row| {
-            ClassWithTeacherInfo {
+        let classes: Vec<ClassWithTeacherInfo> = rows
+            .into_iter()
+            .map(|row| ClassWithTeacherInfo {
                 id: row.id,
                 name: row.name.unwrap_or_default(),
                 grade: row.grade.unwrap_or(0) as i16,
                 academic_year: row.academic_year.unwrap_or_default(),
-                is_main_teacher: row.is_main_teacher.unwrap_or(false)
-            }
-        }).collect();
+                is_main_teacher: row.is_main_teacher.unwrap_or(false),
+            })
+            .collect();
 
         Ok(Json(classes))
     } else {
@@ -195,7 +437,7 @@ async fn list_persons(
     limit: i64,
 ) -> Result<(Vec<PersonResponse>, i64), AppError> {
     let offset = (page - 1) * limit;
-    
+
     // 处理空字符串情况，视为None
     let person_type = person_type.filter(|&t| !t.is_empty());
 
@@ -279,7 +521,7 @@ async fn list_persons(
                      ORDER BY p.created_at DESC
                      LIMIT $4 OFFSET $5"
                 };
-                
+
                 sqlx::query_as::<_, PersonWithRelations>(query)
                     .bind(t)
                     .bind(format!("%{}%", s))
@@ -312,8 +554,8 @@ async fn list_persons(
                 .bind(offset)
                 .fetch_all(pool)
                 .await?
-        } else {
-            sqlx::query_as::<_, PersonWithRelations>(
+            } else {
+                sqlx::query_as::<_, PersonWithRelations>(
                     "SELECT p.id, p.name, p.gender, p.birthday, p.phone, p.email, p.type, 
                             s.student_no, s.class_id, s.enrollment_date, s.status,
                             t.employee_no, t.department_id, t.title, t.hire_date,
@@ -337,10 +579,10 @@ async fn list_persons(
                 .await?
             }
         } else if let Some(class_id) = _class_id {
-                // 根据人员类型使用不同的class_id过滤逻辑
-                let query = if t == "teacher" {
-                    // 老师通过teacher_class表关联
-                    "SELECT p.id, p.name, p.gender, p.birthday, p.phone, p.email, p.type, 
+            // 根据人员类型使用不同的class_id过滤逻辑
+            let query = if t == "teacher" {
+                // 老师通过teacher_class表关联
+                "SELECT p.id, p.name, p.gender, p.birthday, p.phone, p.email, p.type, 
                             s.student_no, s.class_id, s.enrollment_date, s.status,
                             t.employee_no, t.department_id, t.title, t.hire_date,
                             pa.wechat_openid, pa.occupation,
@@ -355,9 +597,9 @@ async fn list_persons(
                      WHERE p.type = $1
                      ORDER BY p.created_at DESC
                      LIMIT $3 OFFSET $4"
-                } else if t == "student" {
-                    // 学生通过students.class_id关联
-                    "SELECT p.id, p.name, p.gender, p.birthday, p.phone, p.email, p.type, 
+            } else if t == "student" {
+                // 学生通过students.class_id关联
+                "SELECT p.id, p.name, p.gender, p.birthday, p.phone, p.email, p.type, 
                             s.student_no, s.class_id, s.enrollment_date, s.status,
                             t.employee_no, t.department_id, t.title, t.hire_date,
                             pa.wechat_openid, pa.occupation,
@@ -371,9 +613,9 @@ async fn list_persons(
                      WHERE p.type = $1 AND s.class_id = $2
                      ORDER BY p.created_at DESC
                      LIMIT $3 OFFSET $4"
-                } else {
-                    // 其他类型（如家长）不支持class_id过滤
-                    "SELECT p.id, p.name, p.gender, p.birthday, p.phone, p.email, p.type, 
+            } else {
+                // 其他类型（如家长）不支持class_id过滤
+                "SELECT p.id, p.name, p.gender, p.birthday, p.phone, p.email, p.type, 
                             s.student_no, s.class_id, s.enrollment_date, s.status,
                             t.employee_no, t.department_id, t.title, t.hire_date,
                             pa.wechat_openid, pa.occupation,
@@ -387,18 +629,18 @@ async fn list_persons(
                      WHERE p.type = $1
                      ORDER BY p.created_at DESC
                      LIMIT $3 OFFSET $4"
-                };
-                
-                sqlx::query_as::<_, PersonWithRelations>(query)
-                    .bind(t)
-                    .bind(class_id)
-                    .bind(limit)
-                    .bind(offset)
-                    .fetch_all(pool)
-                    .await?
+            };
+
+            sqlx::query_as::<_, PersonWithRelations>(query)
+                .bind(t)
+                .bind(class_id)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(pool)
+                .await?
         } else if let Some(department_id) = _department_id {
-                sqlx::query_as::<_, PersonWithRelations>(
-                    "SELECT p.id, p.name, p.gender, p.birthday, p.phone, p.email, p.type, 
+            sqlx::query_as::<_, PersonWithRelations>(
+                "SELECT p.id, p.name, p.gender, p.birthday, p.phone, p.email, p.type, 
                             s.student_no, s.class_id, s.enrollment_date, s.status,
                             t.employee_no, t.department_id, t.title, t.hire_date,
                             pa.wechat_openid, pa.occupation,
@@ -412,16 +654,16 @@ async fn list_persons(
                      WHERE p.type = $1 AND t.department_id = $2
                      ORDER BY p.created_at DESC
                      LIMIT $3 OFFSET $4",
-                )
-                .bind(t)
-                .bind(department_id)
-                .bind(limit)
-                .bind(offset)
-                .fetch_all(pool)
-                .await?
-            } else {
-                sqlx::query_as::<_, PersonWithRelations>(
-                    "SELECT p.id, p.name, p.gender, p.birthday, p.phone, p.email, p.type, 
+            )
+            .bind(t)
+            .bind(department_id)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(pool)
+            .await?
+        } else {
+            sqlx::query_as::<_, PersonWithRelations>(
+                "SELECT p.id, p.name, p.gender, p.birthday, p.phone, p.email, p.type, 
                             s.student_no, s.class_id, s.enrollment_date, s.status,
                             t.employee_no, t.department_id, t.title, t.hire_date,
                             pa.wechat_openid, pa.occupation,
@@ -435,12 +677,12 @@ async fn list_persons(
                      WHERE p.type = $1
                      ORDER BY p.created_at DESC
                      LIMIT $2 OFFSET $3",
-                )
-                .bind(t)
-                .bind(limit)
-                .bind(offset)
-                .fetch_all(pool)
-                .await?
+            )
+            .bind(t)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(pool)
+            .await?
         }
     } else if let Some(s) = search {
         sqlx::query_as::<_, PersonWithRelations>(
@@ -486,14 +728,17 @@ async fn list_persons(
         .await?
     };
 
-    let items: Vec<PersonResponse> = rows.into_iter().map(|row| {
-        let mut response = row.into_response();
-        // 如果是老师，暂时返回空的班级列表，详细信息通过get_person接口获取
-        if let PersonResponse::Teacher(ref mut teacher_response) = response {
-            teacher_response.classes = Vec::new();
-        }
-        response
-    }).collect();
+    let items: Vec<PersonResponse> = rows
+        .into_iter()
+        .map(|row| {
+            let mut response = row.into_response();
+            // 如果是老师，暂时返回空的班级列表，详细信息通过get_person接口获取
+            if let PersonResponse::Teacher(ref mut teacher_response) = response {
+                teacher_response.classes = Vec::new();
+            }
+            response
+        })
+        .collect();
 
     Ok((items, total))
 }
@@ -501,7 +746,7 @@ async fn list_persons(
 async fn get_person(pool: &sqlx::PgPool, id: Uuid) -> Result<PersonResponse, AppError> {
     println!("=== GET_PERSON DEBUG ===");
     println!("Fetching person with ID: {}", id);
-    
+
     let row = sqlx::query_as::<_, PersonWithRelations>(
         "SELECT p.id, p.name, p.gender, p.birthday, p.phone, p.email, p.type, 
                 s.student_no, s.class_id, s.enrollment_date, s.status,
@@ -525,7 +770,7 @@ async fn get_person(pool: &sqlx::PgPool, id: Uuid) -> Result<PersonResponse, App
             println!("Person found in database");
             println!("Person data: {:?}", row);
             row
-        },
+        }
         None => {
             println!("Person not found in database");
             return Err(AppError::NotFound);
@@ -534,7 +779,7 @@ async fn get_person(pool: &sqlx::PgPool, id: Uuid) -> Result<PersonResponse, App
 
     println!("Converting row to response...");
     let mut response = row.into_response();
-    
+
     // 如果是老师，获取其关联的多个班级信息
     if let PersonResponse::Teacher(ref mut teacher_response) = response {
         println!("Fetching classes for teacher...");
@@ -547,18 +792,19 @@ async fn get_person(pool: &sqlx::PgPool, id: Uuid) -> Result<PersonResponse, App
         )
         .fetch_all(pool)
         .await?;
-        
+
         println!("Found {} classes for teacher", classes.len());
-        
-        teacher_response.classes = classes.into_iter().map(|c| {
-            crate::models::person::TeacherClassInfo {
+
+        teacher_response.classes = classes
+            .into_iter()
+            .map(|c| crate::models::person::TeacherClassInfo {
                 class_id: c.class_id,
                 class_name: c.class_name,
-                is_main_teacher: c.is_main_teacher.unwrap_or(false)
-            }
-        }).collect();
+                is_main_teacher: c.is_main_teacher.unwrap_or(false),
+            })
+            .collect();
     }
-    
+
     println!("Response created successfully");
     Ok(response)
 }
@@ -574,9 +820,15 @@ async fn create_person(
     let person_id = Uuid::new_v4();
 
     // 转换日期字符串为NaiveDate
-    let birthday = payload.birthday.and_then(|s| chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok());
-    let enrollment_date = payload.enrollment_date.and_then(|s| chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok());
-    let hire_date = payload.hire_date.and_then(|s| chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok());
+    let birthday = payload
+        .birthday
+        .and_then(|s| chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok());
+    let enrollment_date = payload
+        .enrollment_date
+        .and_then(|s| chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok());
+    let hire_date = payload
+        .hire_date
+        .and_then(|s| chrono::NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok());
 
     // 根据人员类型确定username
     let username = match payload.type_.as_str() {
@@ -585,7 +837,9 @@ async fn create_person(
                 AppError::InvalidInput("student_no is required for student".to_string())
             })?;
             if student_no.trim().is_empty() {
-                return Err(AppError::InvalidInput("student_no cannot be empty".to_string()));
+                return Err(AppError::InvalidInput(
+                    "student_no cannot be empty".to_string(),
+                ));
             }
             student_no.clone()
         }
@@ -594,13 +848,18 @@ async fn create_person(
                 AppError::InvalidInput("employee_no is required for teacher".to_string())
             })?;
             if employee_no.trim().is_empty() {
-                return Err(AppError::InvalidInput("employee_no cannot be empty".to_string()));
+                return Err(AppError::InvalidInput(
+                    "employee_no cannot be empty".to_string(),
+                ));
             }
             employee_no.clone()
         }
         "parent" => {
             // 家长使用手机号作为username，如果没有手机号则使用UUID
-            payload.phone.clone().unwrap_or_else(|| person_id.to_string())
+            payload
+                .phone
+                .clone()
+                .unwrap_or_else(|| person_id.to_string())
         }
         _ => {
             return Err(AppError::InvalidInput("Invalid person type".to_string()));
@@ -609,14 +868,15 @@ async fn create_person(
 
     // 加载固定路径下的权限模板（templates/permissions/{role}.yaml）
     let permission_template = crate::core::permission::load_default_template(&payload.type_)
-        .map_err(|e| AppError::InvalidInput(format!("加载权限模板失败({}): {}", payload.type_, e)))?;
+        .map_err(|e| {
+            AppError::InvalidInput(format!("加载权限模板失败({}): {}", payload.type_, e))
+        })?;
 
     let mut tx = pool.begin().await?;
 
     // 生成密码哈希：如果提供了密码则使用提供的密码，否则使用默认密码123456
     let password_to_hash = payload.password.as_deref().unwrap_or("123456");
-    let password_hash = hash_password(password_to_hash)
-        .map_err(|_| AppError::Internal)?;
+    let password_hash = hash_password(password_to_hash).map_err(|_| AppError::Internal)?;
 
     sqlx::query(
            "INSERT INTO persons (id, name, username, password_hash, gender, birthday, phone, email, type, role) 
@@ -666,7 +926,7 @@ async fn create_person(
             .bind(hire_date)
             .execute(&mut *tx)
             .await?;
-            
+
             // 处理老师与班级的关联
             if let Some(classes) = payload.classes {
                 for class in classes {
@@ -679,18 +939,16 @@ async fn create_person(
                     .bind(class.is_main_teacher)
                     .execute(&mut *tx)
                     .await?;
-                    
+
                     // 如果是班主任，更新classes表的teacher_id字段
                     if class.is_main_teacher {
                         // 更新该班级的班主任
-                        sqlx::query(
-                            "UPDATE classes SET teacher_id = $1 WHERE id = $2",
-                        )
-                        .bind(person_id)
-                        .bind(class.class_id)
-                        .execute(&mut *tx)
-                        .await?;
-                        
+                        sqlx::query("UPDATE classes SET teacher_id = $1 WHERE id = $2")
+                            .bind(person_id)
+                            .bind(class.class_id)
+                            .execute(&mut *tx)
+                            .await?;
+
                         // 清除该班级其他老师的班主任标志
                         sqlx::query(
                             "UPDATE teacher_class SET is_main_teacher = false 
@@ -732,7 +990,7 @@ async fn create_person(
             "INSERT INTO user_permissions (user_id, permission, value, priority)
              VALUES ($1, $2, $3, $4)
              ON CONFLICT (user_id, permission) DO UPDATE SET
-             value = EXCLUDED.value, priority = EXCLUDED.priority"
+             value = EXCLUDED.value, priority = EXCLUDED.priority",
         )
         .bind(person_id)
         .bind(permission_str)
@@ -755,18 +1013,18 @@ async fn update_person(
     println!("=== UPDATE PERSON DEBUG ===");
     println!("Person ID: {}", id);
     println!("Payload: {:?}", payload);
-    
+
     // TODO: 添加权限检查逻辑
     // 1. 从请求中获取当前用户信息
     // 2. 检查用户角色是否为管理员
     // 3. 如果不是管理员，检查用户是否为班主任
     // 4. 如果既不是管理员也不是班主任，返回权限错误
-    
+
     let mut tx = match pool.begin().await {
         Ok(tx) => {
             println!("Transaction started successfully");
             tx
-        },
+        }
         Err(e) => {
             println!("Failed to start transaction: {:?}", e);
             return Err(AppError::Database(e));
@@ -777,15 +1035,16 @@ async fn update_person(
     let person = match sqlx::query_as::<_, Person>("SELECT * FROM persons WHERE id = $1")
         .bind(id)
         .fetch_optional(&mut *tx)
-        .await {
+        .await
+    {
         Ok(Some(p)) => {
             println!("Person found: {:?}", p);
             p
-        },
+        }
         Ok(None) => {
             println!("Person not found");
             return Err(AppError::NotFound);
-        },
+        }
         Err(e) => {
             println!("Failed to fetch person: {:?}", e);
             return Err(AppError::Database(e));
@@ -798,8 +1057,12 @@ async fn update_person(
             .bind(name)
             .bind(id)
             .execute(&mut *tx)
-            .await {
-            Ok(result) => println!("Name update successful, rows affected: {}", result.rows_affected()),
+            .await
+        {
+            Ok(result) => println!(
+                "Name update successful, rows affected: {}",
+                result.rows_affected()
+            ),
             Err(e) => {
                 println!("Name update failed: {:?}", e);
                 return Err(AppError::Database(e));
@@ -807,14 +1070,21 @@ async fn update_person(
         };
     }
     if let Some(gender) = payload.gender {
-        println!("Updating gender to: {} (converted to i16: {})
-", gender, gender as i16);
+        println!(
+            "Updating gender to: {} (converted to i16: {})
+",
+            gender, gender as i16
+        );
         match sqlx::query("UPDATE persons SET gender = $1 WHERE id = $2")
             .bind(gender as i16)
             .bind(id)
             .execute(&mut *tx)
-            .await {
-            Ok(result) => println!("Gender update successful, rows affected: {}", result.rows_affected()),
+            .await
+        {
+            Ok(result) => println!(
+                "Gender update successful, rows affected: {}",
+                result.rows_affected()
+            ),
             Err(e) => {
                 println!("Gender update failed: {:?}", e);
                 return Err(AppError::Database(e));
@@ -854,8 +1124,7 @@ async fn update_person(
     // 更新密码（如果提供了）
     if let Some(password) = payload.password.as_ref() {
         if !password.is_empty() {
-            let password_hash = hash_password(password)
-                .map_err(|_| AppError::Internal)?;
+            let password_hash = hash_password(password).map_err(|_| AppError::Internal)?;
             sqlx::query("UPDATE persons SET password_hash = $1 WHERE id = $2")
                 .bind(password_hash)
                 .bind(id)
@@ -874,8 +1143,12 @@ async fn update_person(
                     .bind(student_no)
                     .bind(id)
                     .execute(&mut *tx)
-                    .await {
-                    Ok(result) => println!("Student_no update successful, rows affected: {}", result.rows_affected()),
+                    .await
+                {
+                    Ok(result) => println!(
+                        "Student_no update successful, rows affected: {}",
+                        result.rows_affected()
+                    ),
                     Err(e) => {
                         println!("Student_no update failed: {:?}", e);
                         return Err(AppError::Database(e));
@@ -886,8 +1159,12 @@ async fn update_person(
                     .bind(student_no)
                     .bind(id)
                     .execute(&mut *tx)
-                    .await {
-                    Ok(result) => println!("Username update successful, rows affected: {}", result.rows_affected()),
+                    .await
+                {
+                    Ok(result) => println!(
+                        "Username update successful, rows affected: {}",
+                        result.rows_affected()
+                    ),
                     Err(e) => {
                         println!("Username update failed: {:?}", e);
                         return Err(AppError::Database(e));
@@ -900,8 +1177,12 @@ async fn update_person(
                     .bind(payload.class_id)
                     .bind(id)
                     .execute(&mut *tx)
-                    .await {
-                    Ok(result) => println!("Class_id update successful, rows affected: {}", result.rows_affected()),
+                    .await
+                {
+                    Ok(result) => println!(
+                        "Class_id update successful, rows affected: {}",
+                        result.rows_affected()
+                    ),
                     Err(e) => {
                         println!("Class_id update failed: {:?}", e);
                         return Err(AppError::Database(e));
@@ -915,27 +1196,39 @@ async fn update_person(
                     match chrono::NaiveDate::parse_from_str(&enrollment_date_str, "%Y-%m-%d") {
                         Ok(enrollment_date) => {
                             println!("Parsed enrollment_date: {}", enrollment_date);
-                            match sqlx::query("UPDATE students SET enrollment_date = $1 WHERE person_id = $2")
-                                .bind(enrollment_date)
-                                .bind(id)
-                                .execute(&mut *tx)
-                                .await {
-                                Ok(result) => println!("Enrollment_date update successful, rows affected: {}", result.rows_affected()),
+                            match sqlx::query(
+                                "UPDATE students SET enrollment_date = $1 WHERE person_id = $2",
+                            )
+                            .bind(enrollment_date)
+                            .bind(id)
+                            .execute(&mut *tx)
+                            .await
+                            {
+                                Ok(result) => println!(
+                                    "Enrollment_date update successful, rows affected: {}",
+                                    result.rows_affected()
+                                ),
                                 Err(e) => {
                                     println!("Enrollment_date update failed: {:?}", e);
                                     return Err(AppError::Database(e));
                                 }
                             }
-                        },
+                        }
                         Err(e) => println!("Failed to parse enrollment_date string: {:?}", e),
                     }
                 } else {
                     println!("Setting enrollment_date to NULL");
-                    match sqlx::query("UPDATE students SET enrollment_date = NULL WHERE person_id = $1")
-                        .bind(id)
-                        .execute(&mut *tx)
-                        .await {
-                        Ok(result) => println!("Enrollment_date set to NULL successful, rows affected: {}", result.rows_affected()),
+                    match sqlx::query(
+                        "UPDATE students SET enrollment_date = NULL WHERE person_id = $1",
+                    )
+                    .bind(id)
+                    .execute(&mut *tx)
+                    .await
+                    {
+                        Ok(result) => println!(
+                            "Enrollment_date set to NULL successful, rows affected: {}",
+                            result.rows_affected()
+                        ),
                         Err(e) => {
                             println!("Enrollment_date NULL update failed: {:?}", e);
                             return Err(AppError::Database(e));
@@ -975,7 +1268,9 @@ async fn update_person(
             }
             if let Some(hire_date_str) = payload.hire_date {
                 if !hire_date_str.is_empty() {
-                    if let Ok(hire_date) = chrono::NaiveDate::parse_from_str(&hire_date_str, "%Y-%m-%d") {
+                    if let Ok(hire_date) =
+                        chrono::NaiveDate::parse_from_str(&hire_date_str, "%Y-%m-%d")
+                    {
                         sqlx::query("UPDATE teachers SET hire_date = $1 WHERE person_id = $2")
                             .bind(hire_date)
                             .bind(id)
@@ -989,7 +1284,7 @@ async fn update_person(
                         .await?;
                 }
             }
-            
+
             // 处理老师与班级的关联
             if let Some(classes) = payload.classes {
                 // 先删除现有的关联关系
@@ -997,7 +1292,7 @@ async fn update_person(
                     .bind(id)
                     .execute(&mut *tx)
                     .await?;
-                
+
                 // 插入新的关联关系
                 for class in classes {
                     sqlx::query(
@@ -1009,18 +1304,16 @@ async fn update_person(
                     .bind(class.is_main_teacher)
                     .execute(&mut *tx)
                     .await?;
-                    
+
                     // 如果是班主任，更新classes表的teacher_id字段
                     if class.is_main_teacher {
                         // 更新该班级的班主任
-                        sqlx::query(
-                            "UPDATE classes SET teacher_id = $1 WHERE id = $2",
-                        )
-                        .bind(id)
-                        .bind(class.class_id)
-                        .execute(&mut *tx)
-                        .await?;
-                        
+                        sqlx::query("UPDATE classes SET teacher_id = $1 WHERE id = $2")
+                            .bind(id)
+                            .bind(class.class_id)
+                            .execute(&mut *tx)
+                            .await?;
+
                         // 清除该班级其他老师的班主任标志
                         sqlx::query(
                             "UPDATE teacher_class SET is_main_teacher = false 
@@ -1057,7 +1350,7 @@ async fn update_person(
     match tx.commit().await {
         Ok(_) => {
             println!("Transaction committed successfully");
-        },
+        }
         Err(e) => {
             println!("Failed to commit transaction: {:?}", e);
             return Err(AppError::Database(e));
@@ -1069,27 +1362,42 @@ async fn update_person(
         println!("Syncing teacher class permissions...");
         let permission_manager = PermissionManager::new(pool.clone());
         // 查询老师当前的班级关联
-        match sqlx::query("SELECT class_id, is_main_teacher FROM teacher_class WHERE teacher_id = $1")
-            .bind(id)
-            .fetch_all(pool)
-            .await {
+        match sqlx::query(
+            "SELECT class_id, is_main_teacher FROM teacher_class WHERE teacher_id = $1",
+        )
+        .bind(id)
+        .fetch_all(pool)
+        .await
+        {
             Ok(rows) => {
                 for row in rows {
                     let class_id: Uuid = row.get("class_id");
                     let is_main_teacher: bool = row.get("is_main_teacher");
                     if is_main_teacher {
-                        match permission_manager.add_class_permissions_for_teacher(id, class_id).await {
-                            Ok(_) => println!("Added class permissions for class {} (teacher {})", class_id, id),
+                        match permission_manager
+                            .add_class_permissions_for_teacher(id, class_id)
+                            .await
+                        {
+                            Ok(_) => println!(
+                                "Added class permissions for class {} (teacher {})",
+                                class_id, id
+                            ),
                             Err(e) => println!("Failed to add class permissions: {}", e),
                         }
                     } else {
-                        match permission_manager.remove_class_permissions_for_teacher(id, class_id).await {
-                            Ok(_) => println!("Removed class permissions for class {} (teacher {})", class_id, id),
+                        match permission_manager
+                            .remove_class_permissions_for_teacher(id, class_id)
+                            .await
+                        {
+                            Ok(_) => println!(
+                                "Removed class permissions for class {} (teacher {})",
+                                class_id, id
+                            ),
                             Err(e) => println!("Failed to remove class permissions: {}", e),
                         }
                     }
                 }
-            },
+            }
             Err(e) => println!("Failed to fetch teacher classes for permission sync: {}", e),
         }
     }
@@ -1099,7 +1407,7 @@ async fn update_person(
         Ok(person) => {
             println!("Update completed successfully, returning person data");
             Ok(person)
-        },
+        }
         Err(e) => {
             println!("Failed to fetch updated person data: {:?}", e);
             Err(e)
@@ -1150,7 +1458,7 @@ impl PersonWithRelations {
         println!("Person type: {}", self.type_);
         println!("Student no: {:?}", self.student_no);
         println!("Status: {:?}", self.status);
-        
+
         match self.type_.as_str() {
             "student" => PersonResponse::Student(StudentResponse {
                 id: self.id,

@@ -1,8 +1,11 @@
+/.playwright-cli
+/.skills
 发布目录
 智联校园多维管理平台.zip
 视频剪辑
 installer
 newnewnew
+model/
 # Dependencies
 node_modules/
 target/

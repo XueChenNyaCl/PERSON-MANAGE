@@ -4,7 +4,11 @@ use tokio::time::{sleep, Duration};
 use tracing::warn;
 
 pub async fn init_db(database_url: &str) -> Result<PgPool, anyhow::Error> {
-    loop {
+    // 尝试连接数据库，最多重试3次
+    let max_retries = 3;
+    let mut last_error = None;
+
+    for attempt in 1..=max_retries {
         match PgPoolOptions::new()
             .max_connections(10)
             .connect(database_url)
@@ -24,11 +28,20 @@ pub async fn init_db(database_url: &str) -> Result<PgPool, anyhow::Error> {
             }
             Err(e) => {
                 warn!(
-                    "Failed to connect to database: {}. Retrying in 10 seconds...",
-                    e
+                    "Failed to connect to database (attempt {}/{}): {}. Retrying in 3 seconds...",
+                    attempt, max_retries, e
                 );
-                sleep(Duration::from_secs(10)).await;
+                last_error = Some(e);
+                if attempt < max_retries {
+                    sleep(Duration::from_secs(3)).await;
+                }
             }
         }
     }
+
+    Err(anyhow::anyhow!(
+        "Failed to connect to database after {} attempts: {}",
+        max_retries,
+        last_error.unwrap_or_else(|| sqlx::Error::RowNotFound)
+    ))
 }
